@@ -33,6 +33,9 @@ import (
 	"github.com/cockroachdb/cockroach/gossip"
 	"github.com/cockroachdb/cockroach/keys"
 	"github.com/cockroachdb/cockroach/kv"
+	"github.com/cockroachdb/cockroach/redis"
+	redisdriver "github.com/cockroachdb/cockroach/redis/driver"
+	"github.com/cockroachdb/cockroach/redis/resp"
 	crpc "github.com/cockroachdb/cockroach/rpc"
 	"github.com/cockroachdb/cockroach/server/status"
 	"github.com/cockroachdb/cockroach/sql"
@@ -74,6 +77,8 @@ type Server struct {
 	kvDB          *kv.DBServer
 	sqlServer     sql.Server
 	pgServer      *pgwire.Server
+	redisServer         redis.Server
+	respServer          *resp.Server
 	node          *Node
 	recorder      *status.NodeStatusRecorder
 	admin         *adminServer
@@ -184,6 +189,17 @@ func NewServer(ctx *Context, stopper *stop.Stopper) (*Server, error) {
 		Stopper:  stopper,
 	})
 
+	s.redisServer = redis.MakeServer(&s.ctx.Context, *s.db)
+	if err := s.redisServer.RegisterRPC(s.rpc); err != nil {
+		return nil, err
+	}
+
+	s.respServer = resp.NewServer(&resp.Context{
+		Context:  &s.ctx.Context,
+		Executor: s.redisServer.Executor,
+		Stopper:  stopper,
+	})
+
 	// TODO(bdarnell): make StoreConfig configurable.
 	nCtx := storage.StoreContext{
 		Clock:           s.clock,
@@ -262,6 +278,15 @@ func (s *Server) Start() error {
 	log.Infof("starting %s server at %s", s.ctx.HTTPRequestScheme(), addr)
 	s.initHTTP()
 
+	host, _, err := net.SplitHostPort(addrStr)
+	if err != nil {
+		return err
+	}
+
+	if err := s.respServer.Start(util.MakeUnresolvedAddr("tcp", net.JoinHostPort(host, "16379"))); err != nil {
+		return err
+	}
+
 	return s.pgServer.Start(util.NewUnresolvedAddr("tcp", s.ctx.PGAddr))
 }
 
@@ -286,6 +311,10 @@ func (s *Server) initHTTP() {
 	s.mux.Handle(driver.Endpoint, s.sqlServer)
 
 	close(s.httpReady)
+
+	// The Redis endpoints handles its own authentication, verifying user
+	// credentials against the requested user.
+	s.mux.Handle(redisdriver.Endpoint, s.redisServer)
 }
 
 // startWriteSummaries begins periodically persisting status summaries for the
