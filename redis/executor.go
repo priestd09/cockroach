@@ -48,7 +48,47 @@ const errWrongNumberOfArguments = "wrong number of arguments for '%s' command"
 func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 	var d driver.Datum
 	var err error
+	incrby := func(key string, value int64) {
+		var val client.KeyValue
+		val, err = e.db.Get(key)
+		if err != nil {
+			return
+		}
+		var i int64
+		if !val.Exists() {
+			i = 0
+		} else {
+			i, err = strconv.ParseInt(string(val.ValueBytes()), 10, 64)
+			if err != nil {
+				err = errors.New("value is not an integer or out of range")
+				return
+			}
+		}
+		i += value
+		if err = e.db.Put(key, strconv.FormatInt(i, 10)); err != nil {
+			return
+		}
+		d.Payload = &driver.Datum_IntVal{
+			IntVal: i,
+		}
+	}
 	switch strings.ToLower(c.Command) {
+	case "decr":
+		var key string
+		if err = c.Scan(&key); err != nil {
+			break
+		}
+		incrby(key, -1)
+	case "decrby":
+		var key, value string
+		if err = c.Scan(&key, &value); err != nil {
+			break
+		}
+		var i int64
+		if i, err = strconv.ParseInt(value, 10, 64); err != nil {
+			break
+		}
+		incrby(key, -i)
 	case "del":
 		// TODO(mjibson): remove race condition; improve perf
 		// This function has a race condition because it first Gets an item so it
@@ -95,28 +135,17 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		if err = c.Scan(&key); err != nil {
 			break
 		}
-		var val client.KeyValue
-		val, err = e.db.Get(key)
-		if err != nil {
+		incrby(key, 1)
+	case "incrby":
+		var key, value string
+		if err = c.Scan(&key, &value); err != nil {
 			break
 		}
 		var i int64
-		if !val.Exists() {
-			i = 0
-		} else {
-			i, err = strconv.ParseInt(string(val.ValueBytes()), 10, 64)
-			if err != nil {
-				err = errors.New("value is not an integer or out of range")
-				break
-			}
-		}
-		i++
-		if err = e.db.Put(key, strconv.FormatInt(i, 10)); err != nil {
+		if i, err = strconv.ParseInt(value, 10, 64); err != nil {
 			break
 		}
-		d.Payload = &driver.Datum_IntVal{
-			IntVal: i,
-		}
+		incrby(key, i)
 	case "set":
 		var key, value string
 		if err = c.Scan(&key, &value); err != nil {
