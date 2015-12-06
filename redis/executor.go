@@ -151,7 +151,6 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		if err = c.Scan(&key, &value); err != nil {
 			break
 		}
-		fmt.Println("KEY VALUE SET", key, value)
 		if err = e.db.Put(key, value); err != nil {
 			break
 		}

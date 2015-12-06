@@ -193,9 +193,8 @@ func (s *Server) serveConn(conn net.Conn) error {
 			Command:   args[0],
 			Arguments: args[1:],
 		}
-		fmt.Println("RUN", args)
+		fmt.Println("redis:", args)
 		resp, _, _ := s.context.Executor.Execute(c)
-		fmt.Println("\tRESP", resp)
 		switch d := resp.Response.Payload.(type) {
 		case *driver.Datum_IntVal:
 			fmt.Fprintf(w, ":%d"+CRLF, d.IntVal)
