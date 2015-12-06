@@ -32,7 +32,7 @@ func (c Command) GetUser() string {
 
 // Scan copies arguments into the values pointed at by dest.
 func (c Command) Scan(dest ...*string) error {
-	if len(dest) > len(c.Arguments) {
+	if len(dest) != len(c.Arguments) {
 		return fmt.Errorf("wrong number of arguments for '%s' command", c.Command)
 	}
 	for i, d := range dest {
