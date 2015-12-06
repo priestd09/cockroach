@@ -49,6 +49,30 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 	var d driver.Datum
 	var err error
 	switch strings.ToLower(c.Command) {
+	case "del":
+		// TODO(mjibson): remove race condition; improve perf
+		// This function has a race condition because it first Gets an item so it
+		// can count it for deletion. But the item could have been deleted after the
+		// Get. A transaction would fix that, but be much slower. Consider changing
+		// the Del API to return the number of keys deleted.
+		var i int64
+		var val client.KeyValue
+		for _, key := range c.Arguments {
+			val, err = e.db.Get(key)
+			if err != nil {
+				break
+			}
+			if !val.Exists() {
+				continue
+			}
+			i++
+			if err = e.db.Del(key); err != nil {
+				break
+			}
+		}
+		d.Payload = &driver.Datum_IntVal{
+			IntVal: i,
+		}
 	case "get":
 		var key string
 		if err = c.Scan(&key); err != nil {
