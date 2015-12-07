@@ -195,21 +195,8 @@ func (s *Server) serveConn(conn net.Conn) error {
 		}
 		fmt.Println("redis:", args)
 		resp, _, _ := s.context.Executor.Execute(c)
-		switch d := resp.Response.Payload.(type) {
-		case *driver.Datum_IntVal:
-			fmt.Fprintf(w, ":%d"+CRLF, d.IntVal)
-		case *driver.Datum_StringVal:
-			fmt.Fprintf(w, "+%s"+CRLF, d.StringVal)
-		case *driver.Datum_ByteVal:
-			fmt.Fprintf(w, "$%d"+CRLF, len(d.ByteVal))
-			w.Write([]byte(d.ByteVal))
-			w.Write(bCRLF)
-		case *driver.Datum_NullVal:
-			w.Write([]byte("$-1" + CRLF))
-		case *driver.Datum_ErrorVal:
-			fmt.Fprintf(w, "-%s %s"+CRLF, d.ErrorVal.Typ, d.ErrorVal.Message)
-		default:
-			return fmt.Errorf("unknown type")
+		if err := renderReply(w, &resp.Response); err != nil {
+			return err
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -220,4 +207,31 @@ func (s *Server) serveConn(conn net.Conn) error {
 
 func respError(format string, a ...interface{}) []byte {
 	return []byte("-" + fmt.Sprintf(format, a...))
+}
+
+func renderReply(w io.Writer, d *driver.Datum) error {
+	switch d := d.Payload.(type) {
+	case *driver.Datum_IntVal:
+		fmt.Fprintf(w, ":%d"+CRLF, d.IntVal)
+	case *driver.Datum_StringVal:
+		fmt.Fprintf(w, "+%s"+CRLF, d.StringVal)
+	case *driver.Datum_ByteVal:
+		fmt.Fprintf(w, "$%d"+CRLF, len(d.ByteVal))
+		w.Write([]byte(d.ByteVal))
+		w.Write(bCRLF)
+	case *driver.Datum_NullVal:
+		w.Write([]byte("$-1" + CRLF))
+	case *driver.Datum_ErrorVal:
+		fmt.Fprintf(w, "-%s %s"+CRLF, d.ErrorVal.Typ, d.ErrorVal.Message)
+	case *driver.Datum_ArrayVal:
+		fmt.Fprintf(w, "*%d"+CRLF, len(d.ArrayVal.Values))
+		for _, v := range d.ArrayVal.Values {
+			if err := renderReply(w, v); err != nil {
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("unknown type")
+	}
+	return nil
 }

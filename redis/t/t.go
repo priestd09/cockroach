@@ -34,7 +34,7 @@ func main() {
 	for _, addr := range addrs {
 		if err := test(addr); err != nil {
 			io.Copy(os.Stdout, &buf)
-			log.Fatal("%s: %s\n", addr, err)
+			log.Fatalf("%s: %s\n", addr, err)
 		}
 	}
 	if err := cmd.Process.Kill(); err != nil {
@@ -47,63 +47,86 @@ func test(addr string) error {
 	if err != nil {
 		return err
 	}
-	lines := strings.Split(strings.TrimSpace(script), "\n")
-	for i := 0; i < len(lines); i += 2 {
-		sp := strings.Fields(lines[i])
+	commands := strings.Split(strings.TrimSpace(script), "redis> ")
+	for i, command := range commands{
+		command = strings.TrimSpace(command)
+		if command == "" {
+			continue
+		}
+		lines := strings.SplitN(command, "\n", 2)
+		sp := strings.Fields(lines[0])
 		args := append([]string{"--no-raw", "-h", host, "-p", port}, sp...)
 		out, err := exec.Command("redis-cli", args...).CombinedOutput()
 		if err != nil {
 			fmt.Println(sp, string(out))
 			return err
 		}
-		line := lines[i+1]
+		line := lines[1]
 		o := strings.TrimSpace(string(out))
 		if o != line {
-			return fmt.Errorf("[%d] %s: %s\nwanted: %s", i, lines[i], o, line)
+			return fmt.Errorf("[%d] %s: %s\nwanted: %s", i, lines[0], o, line)
 		}
 	}
 	return nil
 }
 
 const script = `
-GET mykey
+redis> GET mykey
 (nil)
-SET mykey 10
+redis> SET mykey 10
 OK
-INCR mykey
+redis> INCR mykey
 (integer) 11
-GET mykey
+redis> GET mykey
 "11"
-INCRBY mykey 5
+redis> INCRBY mykey 5
 (integer) 16
-DECRBY mykey 4
+redis> DECRBY mykey 4
 (integer) 12
-DECR mykey
+redis> DECR mykey
 (integer) 11
-DEL mykey a
+redis> DEL mykey a
 (integer) 1
-GET mykey
+redis> GET mykey
 (nil)
-SET key1 "Hello"
+redis> SET key1 "Hello"
 OK
-EXISTS key1
+redis> EXISTS key1
 (integer) 1
-EXISTS nosuchkey
+redis> EXISTS nosuchkey
 (integer) 0
-SET key2 "World"
+redis> SET key2 "World"
 OK
-EXISTS key1 key2 nosuchkey
+redis> EXISTS key1 key2 nosuchkey
 (integer) 2
-MSET key1 Hello key2 World
+redis> MSET key1 Hello key2 World
 OK
-GET key1
+redis> GET key1
 "Hello"
-GET key2
+redis> GET key2
 "World"
-SET mykey Hello
+redis> SET mykey Hello
 OK
-RENAME mykey myotherkey
+redis> RENAME mykey myotherkey
 OK
-GET myotherkey
+redis> GET myotherkey
 "Hello"
+redis> RPUSH mylist one
+(integer) 1
+redis> RPUSH mylist two
+(integer) 2
+redis> RPUSH mylist three
+(integer) 3
+redis> LRANGE mylist 0 0
+1) "one"
+redis> LRANGE mylist -3 2
+1) "one"
+2) "two"
+3) "three"
+redis> LRANGE mylist -100 100
+1) "one"
+2) "two"
+3) "three"
+redis> LRANGE mylist 5 10
+(empty list or set)
 `

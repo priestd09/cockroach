@@ -18,6 +18,8 @@
 package redis
 
 import (
+	"bytes"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"strconv"
@@ -162,6 +164,70 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			break
 		}
 		incrby(key, i)
+	case "lrange":
+		var key, start, stop string
+		if err = c.Scan(&key, &start, &stop); err != nil {
+			break
+		}
+		var beg, end int
+		beg, err = strconv.Atoi(start)
+		if err != nil {
+			break
+		}
+		end, err = strconv.Atoi(stop)
+		if err != nil {
+			break
+		}
+		if err = c.Scan(&key, &start, &stop); err != nil {
+			break
+		}
+		var val client.KeyValue
+		val, err = e.db.Get(key)
+		if err != nil {
+			break
+		}
+		var sl []string
+		if val.Exists() {
+			r := bytes.NewReader(val.ValueBytes())
+			if err = gob.NewDecoder(r).Decode(&sl); err != nil {
+				// TODO(mjibson): support WRONGTYPE error here
+				break
+			}
+		}
+		if beg < 0 {
+			beg = len(sl) - 1 + beg
+		}
+		if end < 0 {
+			end = len(sl) - 1 + end
+		}
+		if beg < 0 {
+			beg = 0
+		}
+		if end < beg {
+			beg = 0
+			end = -1
+		}
+		end++
+		if beg > len(sl) {
+			beg = len(sl)
+		}
+		if end > len(sl) {
+			end = len(sl)
+		}
+		sl = sl[beg:end]
+		av := make([]*driver.Datum, len(sl))
+		for i, s := range sl {
+			av[i] = &driver.Datum{
+				Payload: &driver.Datum_ByteVal{
+					ByteVal: []byte(s),
+				},
+			}
+		}
+		d.Payload = &driver.Datum_ArrayVal{
+			ArrayVal: &driver.Array{
+				Values: av,
+			},
+		}
 	case "mset":
 		if len(c.Arguments)%2 != 0 {
 			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
@@ -197,6 +263,38 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			}
 			d.Payload = &driver.Datum_StringVal{
 				StringVal: "OK",
+			}
+			return nil
+		})
+	case "rpush":
+		if len(c.Arguments) < 2 {
+			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
+			break
+		}
+		key := c.Arguments[0]
+		err = e.db.Txn(func(txn *client.Txn) error {
+			val, err := e.db.Get(key)
+			if err != nil {
+				return err
+			}
+			var sl []string
+			if val.Exists() {
+				r := bytes.NewReader(val.ValueBytes())
+				if err := gob.NewDecoder(r).Decode(&sl); err != nil {
+					// TODO(mjibson): support WRONGTYPE error here
+					return err
+				}
+			}
+			sl = append(sl, c.Arguments[1:]...)
+			var buf bytes.Buffer
+			if err := gob.NewEncoder(&buf).Encode(&sl); err != nil {
+				return err
+			}
+			if err := e.db.Put(key, buf.Bytes()); err != nil {
+				return err
+			}
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: int64(len(sl)),
 			}
 			return nil
 		})
