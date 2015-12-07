@@ -100,4 +100,10 @@ GET key1
 "Hello"
 GET key2
 "World"
+SET mykey Hello
+OK
+RENAME mykey myotherkey
+OK
+GET myotherkey
+"Hello"
 `

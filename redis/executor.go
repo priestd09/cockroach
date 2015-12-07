@@ -178,6 +178,27 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			}
 			return nil
 		})
+	case "rename":
+		var src, dst string
+		if err = c.Scan(&src, &dst); err != nil {
+			break
+		}
+		err = e.db.Txn(func(txn *client.Txn) error {
+			val, err := e.db.Get(src)
+			if err != nil {
+				return err
+			}
+			if !val.Exists() {
+				return errors.New("no such key")
+			}
+			if err := e.db.Put(dst, val.ValueBytes()); err != nil {
+				return err
+			}
+			d.Payload = &driver.Datum_StringVal{
+				StringVal: "OK",
+			}
+			return nil
+		})
 	case "set":
 		var key, value string
 		if err = c.Scan(&key, &value); err != nil {
