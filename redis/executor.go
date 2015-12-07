@@ -163,10 +163,11 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		}
 		incrby(key, i)
 	case "mset":
+		if len(c.Arguments)%2 != 0 {
+			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
+			break
+		}
 		err = e.db.Txn(func(txn *client.Txn) error {
-			if len(c.Arguments)%2 != 0 {
-				return fmt.Errorf(errWrongNumberOfArguments, c.Command)
-			}
 			for i := 0; i < len(c.Arguments); i += 2 {
 				key, value := c.Arguments[i], c.Arguments[i+1]
 				if err := e.db.Put(key, value); err != nil {
