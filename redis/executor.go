@@ -125,8 +125,8 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			d.Payload = &driver.Datum_NullVal{}
 			break
 		}
-		d.Payload = &driver.Datum_StringVal{
-			StringVal: string(val.ValueBytes()),
+		d.Payload = &driver.Datum_ByteVal{
+			ByteVal: val.ValueBytes(),
 		}
 	case "incr":
 		var key string
