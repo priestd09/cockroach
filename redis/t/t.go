@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -21,13 +24,17 @@ func main() {
 		log.Fatal(err)
 	}
 	cmd := exec.Command("../cockroach", "start", "--dev")
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
 	if err := cmd.Start(); err != nil {
 		log.Fatal(err)
 	}
 	time.Sleep(time.Second)
 	for _, addr := range addrs {
 		if err := test(addr); err != nil {
-			fmt.Printf("%s: %s\n", addr, err)
+			io.Copy(os.Stdout, &buf)
+			log.Fatal("%s: %s\n", addr, err)
 		}
 	}
 	if err := cmd.Process.Kill(); err != nil {
@@ -44,8 +51,9 @@ func test(addr string) error {
 	for i := 0; i < len(lines); i += 2 {
 		sp := strings.Fields(lines[i])
 		args := append([]string{"--no-raw", "-h", host, "-p", port}, sp...)
-		out, err := exec.Command("redis-cli", args...).Output()
+		out, err := exec.Command("redis-cli", args...).CombinedOutput()
 		if err != nil {
+			fmt.Println(sp, string(out))
 			return err
 		}
 		line := lines[i+1]
@@ -76,4 +84,20 @@ DEL mykey a
 (integer) 1
 GET mykey
 (nil)
+SET key1 "Hello"
+OK
+EXISTS key1
+(integer) 1
+EXISTS nosuchkey
+(integer) 0
+SET key2 "World"
+OK
+EXISTS key1 key2 nosuchkey
+(integer) 2
+MSET key1 Hello key2 World
+OK
+GET key1
+"Hello"
+GET key2
+"World"
 `

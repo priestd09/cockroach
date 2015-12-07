@@ -111,6 +111,24 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			}
 			return nil
 		})
+	case "exists":
+		err = e.db.Txn(func(txn *client.Txn) error {
+			var i int64
+			for _, key := range c.Arguments {
+				val, err := txn.Get(key)
+				if err != nil {
+					return err
+				}
+				if !val.Exists() {
+					continue
+				}
+				i++
+			}
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: i,
+			}
+			return nil
+		})
 	case "get":
 		var key string
 		if err = c.Scan(&key); err != nil {
@@ -144,6 +162,22 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			break
 		}
 		incrby(key, i)
+	case "mset":
+		err = e.db.Txn(func(txn *client.Txn) error {
+			if len(c.Arguments)%2 != 0 {
+				return fmt.Errorf(errWrongNumberOfArguments, c.Command)
+			}
+			for i := 0; i < len(c.Arguments); i += 2 {
+				key, value := c.Arguments[i], c.Arguments[i+1]
+				if err := e.db.Put(key, value); err != nil {
+					return err
+				}
+			}
+			d.Payload = &driver.Datum_StringVal{
+				StringVal: "OK",
+			}
+			return nil
+		})
 	case "set":
 		var key, value string
 		if err = c.Scan(&key, &value); err != nil {
