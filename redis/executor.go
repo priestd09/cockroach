@@ -49,28 +49,29 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 	var d driver.Datum
 	var err error
 	incrby := func(key string, value int64) {
-		var val client.KeyValue
-		val, err = e.db.Get(key)
-		if err != nil {
-			return
-		}
-		var i int64
-		if !val.Exists() {
-			i = 0
-		} else {
-			i, err = strconv.ParseInt(string(val.ValueBytes()), 10, 64)
+		err = e.db.Txn(func(txn *client.Txn) error {
+			val, err := e.db.Get(key)
 			if err != nil {
-				err = errors.New("value is not an integer or out of range")
-				return
+				return err
 			}
-		}
-		i += value
-		if err = e.db.Put(key, strconv.FormatInt(i, 10)); err != nil {
-			return
-		}
-		d.Payload = &driver.Datum_IntVal{
-			IntVal: i,
-		}
+			var i int64
+			if !val.Exists() {
+				i = 0
+			} else {
+				i, err = strconv.ParseInt(string(val.ValueBytes()), 10, 64)
+				if err != nil {
+					return errors.New("value is not an integer or out of range")
+				}
+			}
+			i += value
+			if err := e.db.Put(key, strconv.FormatInt(i, 10)); err != nil {
+				return err
+			}
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: i,
+			}
+			return nil
+		})
 	}
 	switch strings.ToLower(c.Command) {
 	case "decr":
@@ -90,29 +91,26 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		}
 		incrby(key, -i)
 	case "del":
-		// TODO(mjibson): remove race condition; improve perf
-		// This function has a race condition because it first Gets an item so it
-		// can count it for deletion. But the item could have been deleted after the
-		// Get. A transaction would fix that, but be much slower. Consider changing
-		// the Del API to return the number of keys deleted.
-		var i int64
-		var val client.KeyValue
-		for _, key := range c.Arguments {
-			val, err = e.db.Get(key)
-			if err != nil {
-				break
+		err = e.db.Txn(func(txn *client.Txn) error {
+			var i int64
+			for _, key := range c.Arguments {
+				val, err := txn.Get(key)
+				if err != nil {
+					return err
+				}
+				if !val.Exists() {
+					continue
+				}
+				i++
+				if err := txn.Del(key); err != nil {
+					return err
+				}
 			}
-			if !val.Exists() {
-				continue
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: i,
 			}
-			i++
-			if err = e.db.Del(key); err != nil {
-				break
-			}
-		}
-		d.Payload = &driver.Datum_IntVal{
-			IntVal: i,
-		}
+			return nil
+		})
 	case "get":
 		var key string
 		if err = c.Scan(&key); err != nil {
