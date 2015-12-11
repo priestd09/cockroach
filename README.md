@@ -1,3 +1,35 @@
+# Redis branch
+
+This branch adds native Redis protocol support to CockroachDB. It is experimental.
+
+# Usage
+
+1. Compile Cockroach as normal: `make build`.
+2. Start it up: `./cockroach start --dev`.
+3. Connect to port `16379`: `redis-cli -h 127.0.1.1 -p 16379 incrby a 3`.
+
+# Supported commands
+
+- decr
+- decrby
+- del
+- exists
+- get
+- incr
+- incrby
+- lrange
+- mset
+- rename
+- rpush
+- set
+
+# Notes
+
+Performance is likely a few orders of magnitude worse than native Redis.
+The telnet/curl style protocol is not supported.
+
+---
+
 ![logo](/resource/doc/cockroach_db.png?raw=true "Cockroach Labs logo")
 
 
