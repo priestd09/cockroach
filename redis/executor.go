@@ -198,9 +198,6 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		if err != nil {
 			break
 		}
-		if err = c.Scan(&key, &start, &stop); err != nil {
-			break
-		}
 		var val client.KeyValue
 		val, err = e.db.Get(key)
 		if err != nil {
