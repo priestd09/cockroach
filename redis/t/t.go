@@ -2,20 +2,70 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
-	"net"
 	"os"
 	"os/exec"
 	"strings"
+	"testing"
+	"text/tabwriter"
 	"time"
+
+	"github.com/garyburd/redigo/redis"
 )
 
+type benchmark struct {
+	name string
+	f    func(redis.Conn) error
+}
+
 var (
-	addrs = []string{
-		"127.0.0.1:6379",
-		"127.0.1.1:16379",
+	flagBench = flag.Bool("bench", false, "Benchmark")
+	addrs     = [][]string{
+		[]string{"redis.txt", "127.0.0.1", "6379"},
+		[]string{"crdb.txt", "127.0.1.1", "16379"},
+	}
+	benchmarks = []benchmark{
+		{
+			"GET", func(c redis.Conn) error {
+				_, err := c.Do("GET", "a")
+				return err
+			},
+		},
+		{
+			"SET", func(c redis.Conn) error {
+				_, err := c.Do("SET", "a", "1")
+				return err
+			},
+		},
+		{
+			"INCR", func(c redis.Conn) error {
+				_, err := c.Do("INCR", "a")
+				return err
+			},
+		},
+		{
+			"SET,INCR,GET,DEL", func(c redis.Conn) error {
+				if _, err := c.Do("SET", "a", 5); err != nil {
+					return err
+				}
+				if _, err := c.Do("INCRBY", "a", 2); err != nil {
+					return err
+				}
+				if res, err := redis.String(c.Do("GET", "a")); err != nil {
+					return err
+				} else if res != "7" {
+					return fmt.Errorf("expected 7")
+				}
+				if _, err := c.Do("DEL", "a"); err != nil {
+					return err
+				}
+				return nil
+			},
+		},
 	}
 )
 
@@ -23,6 +73,7 @@ func main() {
 	if _, err := exec.Command("redis-cli", "flushall").Output(); err != nil {
 		log.Fatal(err)
 	}
+	flag.Parse()
 	cmd := exec.Command("../cockroach", "start", "--dev")
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
@@ -31,24 +82,75 @@ func main() {
 		log.Fatal(err)
 	}
 	time.Sleep(time.Second)
-	for _, addr := range addrs {
-		if err := test(addr); err != nil {
-			io.Copy(os.Stdout, &buf)
-			log.Fatalf("%s: %s\n", addr, err)
+	if !*flagBench {
+		for _, addr := range addrs {
+			if err := test(addr[1], addr[2]); err != nil {
+				io.Copy(os.Stdout, &buf)
+				log.Fatalf("%s: %s\n", addr, err)
+			}
 		}
+	} else {
+		for _, addr := range addrs {
+			c, err := redis.Dial("tcp", fmt.Sprintf("%s:%s", addr[1], addr[2]))
+			if err != nil {
+				log.Fatalf("%s: %s", addr, err)
+			}
+			var buf bytes.Buffer
+			for _, b := range benchmarks {
+				br, err := bench(c, b.f)
+				if err != nil {
+					log.Fatalf("%s: %s", addr, err)
+				}
+				fmt.Fprintf(&buf, "Benchmark%s %s\n", b.name, br)
+			}
+			c.Close()
+			if err := ioutil.WriteFile(addr[0], buf.Bytes(), 0644); err != nil {
+				log.Fatal(err)
+			}
+		}
+		b, err := exec.Command("benchcmp", addrs[0][0], addrs[1][0]).CombinedOutput()
+		out := string(b)
+		if err != nil {
+			fmt.Println(out)
+			log.Fatal(err)
+		}
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "benchmark\tredis ns/op\tcockroach ns/op\tdelta")
+		for _, line := range strings.Split(out, "\n")[1:] {
+			f := strings.Fields(line)
+			if len(f) == 0 {
+				continue
+			}
+			f[0] = strings.TrimPrefix(f[0], "Benchmark")
+			fmt.Fprintln(w, strings.Join(f, "\t"))
+		}
+		w.Flush()
 	}
 	if err := cmd.Process.Kill(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func test(addr string) error {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return err
-	}
+func bench(c redis.Conn, f func(redis.Conn) error) (*testing.BenchmarkResult, error) {
+	var err error
+	br := testing.Benchmark(func(b *testing.B) {
+		if _, err = c.Do("flushall"); err != nil {
+			b.Fatal(err)
+		}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			err = f(c)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	return &br, err
+}
+
+func test(host, port string) error {
 	commands := strings.Split(strings.TrimSpace(script), "redis> ")
-	for i, command := range commands{
+	for i, command := range commands {
 		command = strings.TrimSpace(command)
 		if command == "" {
 			continue
