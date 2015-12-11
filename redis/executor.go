@@ -272,6 +272,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			break
 		}
 		key = toKey(key)
+		dst = toKey(dst)
 		err = e.db.Txn(func(txn *client.Txn) error {
 			val, err := e.db.Get(key)
 			if err != nil {
