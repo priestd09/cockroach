@@ -50,7 +50,18 @@ const errWrongNumberOfArguments = "wrong number of arguments for '%s' command"
 func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 	var d driver.Datum
 	var err error
+	const RedisPrefix = "/redis/"
+	redisEnd := []byte(RedisPrefix)
+	redisEnd[len(redisEnd)-1]++
+	toKey := func(key string) string {
+		return RedisPrefix + key
+	}
+	fromKey := func(key string) string {
+		return key[len(RedisPrefix):]
+	}
+	_ = fromKey
 	incrby := func(key string, value int64) {
+		key = toKey(key)
 		err = e.db.Txn(func(txn *client.Txn) error {
 			val, err := e.db.Get(key)
 			if err != nil {
@@ -96,6 +107,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		err = e.db.Txn(func(txn *client.Txn) error {
 			var i int64
 			for _, key := range c.Arguments {
+				key = toKey(key)
 				val, err := txn.Get(key)
 				if err != nil {
 					return err
@@ -117,6 +129,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		err = e.db.Txn(func(txn *client.Txn) error {
 			var i int64
 			for _, key := range c.Arguments {
+				key = toKey(key)
 				val, err := txn.Get(key)
 				if err != nil {
 					return err
@@ -131,11 +144,17 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			}
 			return nil
 		})
+	case "flushall":
+		err = e.db.DelRange(RedisPrefix, redisEnd)
+		d.Payload = &driver.Datum_StringVal{
+			StringVal: "OK",
+		}
 	case "get":
 		var key string
 		if err = c.Scan(&key); err != nil {
 			break
 		}
+		key = toKey(key)
 		var val client.KeyValue
 		val, err = e.db.Get(key)
 		if err != nil {
@@ -169,6 +188,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		if err = c.Scan(&key, &start, &stop); err != nil {
 			break
 		}
+		key = toKey(key)
 		var beg, end int
 		beg, err = strconv.Atoi(start)
 		if err != nil {
@@ -236,6 +256,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		err = e.db.Txn(func(txn *client.Txn) error {
 			for i := 0; i < len(c.Arguments); i += 2 {
 				key, value := c.Arguments[i], c.Arguments[i+1]
+				key = toKey(key)
 				if err := e.db.Put(key, value); err != nil {
 					return err
 				}
@@ -246,12 +267,13 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			return nil
 		})
 	case "rename":
-		var src, dst string
-		if err = c.Scan(&src, &dst); err != nil {
+		var key, dst string
+		if err = c.Scan(&key, &dst); err != nil {
 			break
 		}
+		key = toKey(key)
 		err = e.db.Txn(func(txn *client.Txn) error {
-			val, err := e.db.Get(src)
+			val, err := e.db.Get(key)
 			if err != nil {
 				return err
 			}
@@ -271,7 +293,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
 			break
 		}
-		key := c.Arguments[0]
+		key := toKey(c.Arguments[0])
 		err = e.db.Txn(func(txn *client.Txn) error {
 			val, err := e.db.Get(key)
 			if err != nil {
@@ -303,6 +325,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		if err = c.Scan(&key, &value); err != nil {
 			break
 		}
+		key = toKey(key)
 		if err = e.db.Put(key, value); err != nil {
 			break
 		}

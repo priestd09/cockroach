@@ -70,9 +70,6 @@ var (
 )
 
 func main() {
-	if _, err := exec.Command("redis-cli", "flushall").Output(); err != nil {
-		log.Fatal(err)
-	}
 	flag.Parse()
 	cmd := exec.Command("../cockroach", "start", "--dev")
 	var buf bytes.Buffer
@@ -173,6 +170,8 @@ func test(host, port string) error {
 }
 
 const script = `
+redis> FLUSHALL
+OK
 redis> GET mykey
 (nil)
 redis> SET mykey 10
@@ -231,4 +230,10 @@ redis> LRANGE mylist -100 100
 3) "three"
 redis> LRANGE mylist 5 10
 (empty list or set)
+redis> SET key1 hi
+OK
+redis> FLUSHALL
+OK
+redis> GET key1
+(nil)
 `
