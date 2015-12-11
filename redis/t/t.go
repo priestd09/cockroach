@@ -25,8 +25,8 @@ type benchmark struct {
 var (
 	flagBench = flag.Bool("bench", false, "Benchmark")
 	addrs     = [][]string{
-		[]string{"redis.txt", "127.0.0.1", "6379"},
-		[]string{"crdb.txt", "127.0.1.1", "16379"},
+		[]string{"redis", "127.0.0.1", "6379"},
+		[]string{"crdb", "127.0.1.1", "16379"},
 	}
 	benchmarks = []benchmark{
 		{
@@ -87,7 +87,8 @@ func main() {
 			}
 		}
 	} else {
-		for _, addr := range addrs {
+		var names [2]string
+		for i, addr := range addrs {
 			c, err := redis.Dial("tcp", fmt.Sprintf("%s:%s", addr[1], addr[2]))
 			if err != nil {
 				log.Fatalf("%s: %s", addr, err)
@@ -101,11 +102,20 @@ func main() {
 				fmt.Fprintf(&buf, "Benchmark%s %s\n", b.name, br)
 			}
 			c.Close()
-			if err := ioutil.WriteFile(addr[0], buf.Bytes(), 0644); err != nil {
+			f, err := ioutil.TempFile("", addr[0])
+			if err != nil {
 				log.Fatal(err)
 			}
+			defer func(name string) {
+				os.Remove(name)
+			}(f.Name())
+			if _, err = f.Write(buf.Bytes()); err != nil {
+				log.Fatal(err)
+			}
+			names[i] = f.Name()
+			f.Close()
 		}
-		b, err := exec.Command("benchcmp", addrs[0][0], addrs[1][0]).CombinedOutput()
+		b, err := exec.Command("benchcmp", names[0], names[1]).CombinedOutput()
 		out := string(b)
 		if err != nil {
 			fmt.Println(out)
