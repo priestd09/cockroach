@@ -24,6 +24,7 @@ type benchmark struct {
 
 var (
 	flagBench = flag.Bool("bench", false, "Benchmark")
+	flagOut   = flag.String("o", "", "Save output of crdb to named file.")
 	addrs     = [][]string{
 		[]string{"redis", "127.0.0.1", "6379"},
 		[]string{"crdb", "127.0.1.1", "16379"},
@@ -88,6 +89,9 @@ func main() {
 		}
 	} else {
 		var names [2]string
+		if *flagOut != "" {
+			addrs = addrs[1:]
+		}
 		for i, addr := range addrs {
 			c, err := redis.Dial("tcp", fmt.Sprintf("%s:%s", addr[1], addr[2]))
 			if err != nil {
@@ -101,19 +105,30 @@ func main() {
 				}
 				fmt.Fprintf(&buf, "Benchmark%s %s\n", b.name, br)
 			}
+			var f *os.File
 			c.Close()
-			f, err := ioutil.TempFile("", addr[0])
-			if err != nil {
-				log.Fatal(err)
+			if *flagOut != "" {
+				f, err = os.Create(*flagOut)
+				if err != nil {
+					log.Fatal(err)
+				}
+			} else {
+				f, err = ioutil.TempFile("", addr[0])
+				if err != nil {
+					log.Fatal(err)
+				}
+				defer func(name string) {
+					os.Remove(name)
+				}(f.Name())
 			}
-			defer func(name string) {
-				os.Remove(name)
-			}(f.Name())
 			if _, err = f.Write(buf.Bytes()); err != nil {
 				log.Fatal(err)
 			}
 			names[i] = f.Name()
 			f.Close()
+		}
+		if *flagOut != "" {
+			return
 		}
 		b, err := exec.Command("benchcmp", names[0], names[1]).CombinedOutput()
 		out := string(b)
