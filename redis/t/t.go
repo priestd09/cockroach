@@ -185,7 +185,10 @@ func test(host, port string) error {
 			fmt.Println(sp, string(out))
 			return err
 		}
-		line := lines[1]
+		var line string
+		if len(lines) == 2 {
+			line = lines[1]
+		}
 		o := strings.TrimSpace(string(out))
 		if o != line {
 			return fmt.Errorf("[%d] %s: %s\nwanted: %s", i, lines[0], o, line)
@@ -237,6 +240,8 @@ redis> RENAME mykey myotherkey
 OK
 redis> GET myotherkey
 "Hello"
+redis> RPUSH myotherkey a
+(error) WRONGTYPE Operation against a key holding the wrong kind of value
 redis> RPUSH mylist one
 (integer) 1
 redis> RPUSH mylist two
@@ -255,6 +260,8 @@ redis> LRANGE mylist -100 100
 3) "three"
 redis> LRANGE mylist 5 10
 (empty list or set)
+redis> GET mylist
+(error) WRONGTYPE Operation against a key holding the wrong kind of value
 redis> SET key1 hi
 OK
 redis> FLUSHALL
