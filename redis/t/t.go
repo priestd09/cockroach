@@ -280,4 +280,17 @@ redis> LINDEX mylist 3
 (nil)
 redis> LLEN mylist
 (integer) 2
+redis> FLUSHALL
+OK
+redis> RPUSH mylist one
+(integer) 1
+redis> RPUSH mylist two
+(integer) 2
+redis> RPUSH mylist three
+(integer) 3
+redis> LPOP mylist
+"one"
+redis> LRANGE mylist 0 -1
+1) "two"
+2) "three"
 `

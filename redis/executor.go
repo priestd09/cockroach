@@ -139,6 +139,31 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			IntVal: int64(len(sl)),
 		}
 
+	case "lpop":
+		var key string
+		if err = c.Scan(&key); err != nil {
+			break
+		}
+		key = toKey(key)
+		err = e.db.Txn(func(txn *client.Txn) error {
+			var sl []string
+			sl, _, err := getList(txn, key, &d)
+			if err != nil {
+				return err
+			}
+			if len(sl) == 0 {
+				d.Payload = &driver.Datum_NullVal{}
+				return nil
+			}
+			if err := putList(txn, key, sl[1:]); err != nil {
+				return err
+			}
+			d.Payload = &driver.Datum_ByteVal{
+				ByteVal: []byte(sl[0]),
+			}
+			return nil
+		})
+
 	case "lpush":
 		if len(c.Arguments) < 2 {
 			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
@@ -180,10 +205,10 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			break
 		}
 		if beg < 0 {
-			beg = len(sl) - 1 + beg
+			beg = len(sl) + beg
 		}
 		if end < 0 {
-			end = len(sl) - 1 + end
+			end = len(sl) + end
 		}
 		if beg < 0 {
 			beg = 0
