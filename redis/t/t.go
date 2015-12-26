@@ -293,4 +293,30 @@ redis> LPOP mylist
 redis> LRANGE mylist 0 -1
 1) "two"
 2) "three"
+redis> FLUSHALL
+OK
+redis> LPUSH mylist World
+(integer) 1
+redis> LPUSHX mylist Hello
+(integer) 2
+redis> LPUSHX myotherlist Hello
+(integer) 0
+redis> LRANGE mylist 0 -1
+1) "Hello"
+2) "World"
+redis> LRANGE myotherlist 0 -1
+(empty list or set)
+redis> FLUSHALL
+OK
+redis> RPUSH mylist Hello
+(integer) 1
+redis> RPUSHX mylist World
+(integer) 2
+redis> RPUSHX myotherlist World
+(integer) 0
+redis> LRANGE mylist 0 -1
+1) "Hello"
+2) "World"
+redis> LRANGE myotherlist 0 -1
+(empty list or set)
 `

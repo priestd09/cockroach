@@ -185,6 +185,29 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			return nil
 		})
 
+	case "lpushx":
+		if len(c.Arguments) < 2 {
+			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
+			break
+		}
+		key := toKey(c.Arguments[0])
+		err = e.db.Txn(func(txn *client.Txn) error {
+			sl, _, err := getList(txn, key, &d)
+			if err != nil {
+				return err
+			}
+			if len(sl) > 0 {
+				sl = append(c.Arguments[1:], sl...)
+			}
+			if err := putList(txn, key, sl); err != nil {
+				return err
+			}
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: int64(len(sl)),
+			}
+			return nil
+		})
+
 	case "lrange":
 		var key, start, stop string
 		if err = c.Scan(&key, &start, &stop); err != nil {
@@ -251,6 +274,29 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 				return err
 			}
 			sl = append(sl, c.Arguments[1:]...)
+			if err := putList(txn, key, sl); err != nil {
+				return err
+			}
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: int64(len(sl)),
+			}
+			return nil
+		})
+
+	case "rpushx":
+		if len(c.Arguments) < 2 {
+			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
+			break
+		}
+		key := toKey(c.Arguments[0])
+		err = e.db.Txn(func(txn *client.Txn) error {
+			sl, _, err := getList(txn, key, &d)
+			if err != nil {
+				return err
+			}
+			if len(sl) > 0 {
+				sl = append(sl, c.Arguments[1:]...)
+			}
 			if err := putList(txn, key, sl); err != nil {
 				return err
 			}
