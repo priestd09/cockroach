@@ -100,6 +100,66 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 
 	// Lists.
 
+	case "lindex":
+		var key, index string
+		if err = c.Scan(&key, &index); err != nil {
+			break
+		}
+		key = toKey(key)
+		idx, err := strconv.Atoi(index)
+		if err != nil {
+			break
+		}
+		var sl []string
+		if sl, _, err = getList(&e.db, key, &d); err != nil {
+			break
+		}
+		if idx < 0 {
+			idx = len(sl) + idx
+		}
+		if idx >= len(sl) {
+			d.Payload = &driver.Datum_NullVal{}
+			break
+		}
+		d.Payload = &driver.Datum_ByteVal{
+			ByteVal: []byte(sl[idx]),
+		}
+
+	case "llen":
+		var key string
+		if err = c.Scan(&key); err != nil {
+			break
+		}
+		key = toKey(key)
+		var sl []string
+		if sl, _, err = getList(&e.db, key, &d); err != nil {
+			break
+		}
+		d.Payload = &driver.Datum_IntVal{
+			IntVal: int64(len(sl)),
+		}
+
+	case "lpush":
+		if len(c.Arguments) < 2 {
+			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
+			break
+		}
+		key := toKey(c.Arguments[0])
+		err = e.db.Txn(func(txn *client.Txn) error {
+			sl, _, err := getList(txn, key, &d)
+			if err != nil {
+				return err
+			}
+			sl = append(c.Arguments[1:], sl...)
+			if err := putList(txn, key, sl); err != nil {
+				return err
+			}
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: int64(len(sl)),
+			}
+			return nil
+		})
+
 	case "lrange":
 		var key, start, stop string
 		if err = c.Scan(&key, &start, &stop); err != nil {

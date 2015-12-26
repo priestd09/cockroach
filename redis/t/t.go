@@ -268,4 +268,16 @@ redis> FLUSHALL
 OK
 redis> GET key1
 (nil)
+redis> LPUSH mylist World
+(integer) 1
+redis> LPUSH mylist Hello
+(integer) 2
+redis> LINDEX mylist 0
+"Hello"
+redis> LINDEX mylist -1
+"World"
+redis> LINDEX mylist 3
+(nil)
+redis> LLEN mylist
+(integer) 2
 `
