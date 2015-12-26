@@ -319,4 +319,27 @@ redis> LRANGE mylist 0 -1
 2) "World"
 redis> LRANGE myotherlist 0 -1
 (empty list or set)
+redis> FLUSHALL
+OK
+redis> RPUSH mylist one
+(integer) 1
+redis> RPUSH mylist two
+(integer) 2
+redis> RPUSH mylist three
+(integer) 3
+redis> RPOPLPUSH mylist myotherlist
+"three"
+redis> LRANGE mylist 0 -1
+1) "one"
+2) "two"
+redis> LRANGE myotherlist 0 -1
+1) "three"
+redis> RPUSH mylist three
+(integer) 3
+redis> RPOPLPUSH mylist mylist
+"three"
+redis> LRANGE mylist 0 -1
+1) "three"
+2) "one"
+3) "two"
 `

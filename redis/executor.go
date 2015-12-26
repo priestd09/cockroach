@@ -262,6 +262,45 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			},
 		}
 
+	case "rpoplpush":
+		var source, destination string
+		if err = c.Scan(&source, &destination); err != nil {
+			break
+		}
+		source = toKey(source)
+		destination = toKey(destination)
+		err = e.db.Txn(func(txn *client.Txn) error {
+			src, _, err := getList(txn, source, &d)
+			if err != nil {
+				return err
+			}
+			if len(src) == 0 {
+				d.Payload = &driver.Datum_NullVal{}
+				return nil
+			}
+			s := src[len(src)-1]
+			src = src[:len(src)-1]
+			if source == destination {
+				src = append([]string{s}, src...)
+			} else {
+				dst, _, err := getList(txn, destination, &d)
+				if err != nil {
+					return err
+				}
+				dst = append(dst, s)
+				if err := putList(txn, destination, dst); err != nil {
+					return err
+				}
+			}
+			if err := putList(txn, source, src); err != nil {
+				return err
+			}
+			d.Payload = &driver.Datum_ByteVal{
+				ByteVal: []byte(s),
+			}
+			return nil
+		})
+
 	case "rpush":
 		if len(c.Arguments) < 2 {
 			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
