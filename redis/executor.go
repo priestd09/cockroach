@@ -94,103 +94,12 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		})
 	}
 	switch strings.ToLower(c.Command) {
-	case "decr":
-		var key string
-		if err = c.Scan(&key); err != nil {
-			break
-		}
-		incrby(key, -1)
-	case "decrby":
-		var key, value string
-		if err = c.Scan(&key, &value); err != nil {
-			break
-		}
-		var i int64
-		if i, err = strconv.ParseInt(value, 10, 64); err != nil {
-			break
-		}
-		incrby(key, -i)
-	case "del":
-		err = e.db.Txn(func(txn *client.Txn) error {
-			var i int64
-			for _, key := range c.Arguments {
-				key = toKey(key)
-				val, err := txn.Get(key)
-				if err != nil {
-					return err
-				}
-				if !val.Exists() {
-					continue
-				}
-				i++
-				if err := txn.Del(key); err != nil {
-					return err
-				}
-			}
-			d.Payload = &driver.Datum_IntVal{
-				IntVal: i,
-			}
-			return nil
-		})
-	case "exists":
-		err = e.db.Txn(func(txn *client.Txn) error {
-			var i int64
-			for _, key := range c.Arguments {
-				key = toKey(key)
-				val, err := txn.Get(key)
-				if err != nil {
-					return err
-				}
-				if !val.Exists() {
-					continue
-				}
-				i++
-			}
-			d.Payload = &driver.Datum_IntVal{
-				IntVal: i,
-			}
-			return nil
-		})
-	case "flushall":
-		err = e.db.DelRange(RedisPrefix, redisEnd)
-		d.Payload = &driver.Datum_StringVal{
-			StringVal: "OK",
-		}
-	case "get":
-		var key string
-		if err = c.Scan(&key); err != nil {
-			break
-		}
-		key = toKey(key)
-		var val string
-		var ok bool
-		val, ok, err = getString(&e.db, key, &d)
-		if err != nil {
-			break
-		}
-		if !ok {
-			d.Payload = &driver.Datum_NullVal{}
-			break
-		}
-		d.Payload = &driver.Datum_ByteVal{
-			ByteVal: []byte(val),
-		}
-	case "incr":
-		var key string
-		if err = c.Scan(&key); err != nil {
-			break
-		}
-		incrby(key, 1)
-	case "incrby":
-		var key, value string
-		if err = c.Scan(&key, &value); err != nil {
-			break
-		}
-		var i int64
-		if i, err = strconv.ParseInt(value, 10, 64); err != nil {
-			break
-		}
-		incrby(key, i)
+
+	default:
+		err = fmt.Errorf("unknown command '%s'", c.Command)
+
+	// Lists.
+
 	case "lrange":
 		var key, start, stop string
 		if err = c.Scan(&key, &start, &stop); err != nil {
@@ -244,24 +153,79 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 				Values: av,
 			},
 		}
-	case "mset":
-		if len(c.Arguments)%2 != 0 {
+
+	case "rpush":
+		if len(c.Arguments) < 2 {
 			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
 			break
 		}
+		key := toKey(c.Arguments[0])
 		err = e.db.Txn(func(txn *client.Txn) error {
-			for i := 0; i < len(c.Arguments); i += 2 {
-				key, value := c.Arguments[i], c.Arguments[i+1]
-				key = toKey(key)
-				if err := putString(txn, key, value); err != nil {
-					return err
-				}
+			sl, _, err := getList(txn, key, &d)
+			if err != nil {
+				return err
 			}
-			d.Payload = &driver.Datum_StringVal{
-				StringVal: "OK",
+			sl = append(sl, c.Arguments[1:]...)
+			if err := putList(txn, key, sl); err != nil {
+				return err
+			}
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: int64(len(sl)),
 			}
 			return nil
 		})
+
+	// Keys.
+
+	case "del":
+		err = e.db.Txn(func(txn *client.Txn) error {
+			var i int64
+			for _, key := range c.Arguments {
+				key = toKey(key)
+				val, err := txn.Get(key)
+				if err != nil {
+					return err
+				}
+				if !val.Exists() {
+					continue
+				}
+				i++
+				if err := txn.Del(key); err != nil {
+					return err
+				}
+			}
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: i,
+			}
+			return nil
+		})
+
+	case "exists":
+		err = e.db.Txn(func(txn *client.Txn) error {
+			var i int64
+			for _, key := range c.Arguments {
+				key = toKey(key)
+				val, err := txn.Get(key)
+				if err != nil {
+					return err
+				}
+				if !val.Exists() {
+					continue
+				}
+				i++
+			}
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: i,
+			}
+			return nil
+		})
+
+	case "flushall":
+		err = e.db.DelRange(RedisPrefix, redisEnd)
+		d.Payload = &driver.Datum_StringVal{
+			StringVal: "OK",
+		}
+
 	case "rename":
 		var key, dst string
 		if err = c.Scan(&key, &dst); err != nil {
@@ -285,26 +249,84 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			}
 			return nil
 		})
-	case "rpush":
-		if len(c.Arguments) < 2 {
+
+	// Strings.
+
+	case "decr":
+		var key string
+		if err = c.Scan(&key); err != nil {
+			break
+		}
+		incrby(key, -1)
+
+	case "decrby":
+		var key, value string
+		if err = c.Scan(&key, &value); err != nil {
+			break
+		}
+		var i int64
+		if i, err = strconv.ParseInt(value, 10, 64); err != nil {
+			break
+		}
+		incrby(key, -i)
+
+	case "get":
+		var key string
+		if err = c.Scan(&key); err != nil {
+			break
+		}
+		key = toKey(key)
+		var val string
+		var ok bool
+		val, ok, err = getString(&e.db, key, &d)
+		if err != nil {
+			break
+		}
+		if !ok {
+			d.Payload = &driver.Datum_NullVal{}
+			break
+		}
+		d.Payload = &driver.Datum_ByteVal{
+			ByteVal: []byte(val),
+		}
+
+	case "incr":
+		var key string
+		if err = c.Scan(&key); err != nil {
+			break
+		}
+		incrby(key, 1)
+
+	case "incrby":
+		var key, value string
+		if err = c.Scan(&key, &value); err != nil {
+			break
+		}
+		var i int64
+		if i, err = strconv.ParseInt(value, 10, 64); err != nil {
+			break
+		}
+		incrby(key, i)
+
+	case "mset":
+		if len(c.Arguments)%2 != 0 {
 			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
 			break
 		}
-		key := toKey(c.Arguments[0])
 		err = e.db.Txn(func(txn *client.Txn) error {
-			sl, _, err := getList(txn, key, &d)
-			if err != nil {
-				return err
+			for i := 0; i < len(c.Arguments); i += 2 {
+				key, value := c.Arguments[i], c.Arguments[i+1]
+				key = toKey(key)
+				if err := putString(txn, key, value); err != nil {
+					return err
+				}
 			}
-			sl = append(sl, c.Arguments[1:]...)
-			if err := putList(txn, key, sl); err != nil {
-				return err
-			}
-			d.Payload = &driver.Datum_IntVal{
-				IntVal: int64(len(sl)),
+			d.Payload = &driver.Datum_StringVal{
+				StringVal: "OK",
 			}
 			return nil
 		})
+
 	case "set":
 		var key, value string
 		if err = c.Scan(&key, &value); err != nil {
@@ -317,8 +339,6 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		d.Payload = &driver.Datum_StringVal{
 			StringVal: "OK",
 		}
-	default:
-		err = fmt.Errorf("unknown command '%s'", c.Command)
 	}
 	r := driver.Response{
 		Response: d,
