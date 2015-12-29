@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/cockroach/client"
 	"github.com/cockroachdb/cockroach/redis/driver"
@@ -99,6 +100,56 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		err = fmt.Errorf("unknown command '%s'", c.Command)
 
 	// Lists.
+
+	case "blpop":
+		if len(c.Arguments) < 2 {
+			err = fmt.Errorf("wrong number of arguments for '%s' command", c.Command)
+			break
+		}
+		timeout := c.Arguments[len(c.Arguments)-1]
+		var t int
+		t, err = strconv.Atoi(timeout)
+		if err != nil {
+			break
+		}
+		if t == 0 {
+			err = fmt.Errorf("infinite timeout not supported")
+			break
+		}
+		keys := c.Arguments[:len(c.Arguments)-1]
+		for i, k := range keys {
+			keys[i] = toKey(k)
+		}
+		until := time.Now().Add(time.Duration(t) * time.Second)
+		for {
+			err = e.db.Txn(func(txn *client.Txn) error {
+				for _, k := range keys {
+					sl, _, err := getList(txn, k, &d)
+					if err != nil {
+						return err
+					}
+					if len(sl) == 0 {
+						continue
+					}
+					if err := putList(txn, k, sl[1:]); err != nil {
+						return err
+					}
+					d.Payload = &driver.Datum_ByteVal{
+						ByteVal: []byte(sl[0]),
+					}
+					return nil
+				}
+				return nil
+			})
+			if err != nil || d.Payload != nil {
+				break
+			}
+			if time.Now().After(until) {
+				d.Payload = &driver.Datum_NullVal{}
+				break
+			}
+			time.Sleep(time.Second)
+		}
 
 	case "lindex":
 		var key, index string
