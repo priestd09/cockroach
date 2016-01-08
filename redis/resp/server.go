@@ -233,7 +233,7 @@ func renderReply(w io.Writer, d *driver.Datum) error {
 			}
 		}
 	default:
-		return fmt.Errorf("unknown type")
+		return fmt.Errorf("unknown type: %T", d)
 	}
 	return nil
 }
