@@ -128,6 +128,8 @@ provide the password on standard input.`),
 The port to bind for Postgres traffic.`),
 	"port": wrapText(`
 The port to bind for cockroach traffic.`),
+	"redisaddr": wrapText(`
+The host:port to bind for Redis traffic.`),
 	"scan-interval": wrapText(`
 Adjusts the target for the duration of a single scan through a store's
 ranges. The scan is slowed as necessary to approximately achieve this
@@ -201,6 +203,7 @@ func initFlags(ctx *Context) {
 		f.StringVar(&connHost, "host", "", flagUsage["host"])
 		f.StringVar(&connPort, "port", "26257", flagUsage["port"])
 		f.StringVar(&connPGPort, "pgport", "15432", flagUsage["pgport"])
+		f.StringVar(&ctx.RedisAddr, "redisaddr", ctx.RedisAddr, flagUsage["redisaddr"])
 		f.StringVar(&ctx.Attrs, "attrs", ctx.Attrs, usage("attrs"))
 		f.StringVar(&ctx.Stores, "stores", ctx.Stores, usage("stores"))
 		f.DurationVar(&ctx.MaxOffset, "max-offset", ctx.MaxOffset, usage("max-offset"))

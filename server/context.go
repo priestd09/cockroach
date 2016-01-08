@@ -43,6 +43,7 @@ const (
 	defaultCGroupMemPath      = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
 	defaultAddr               = ":26257"
 	defaultPGAddr             = ":15432"
+	defaultRedisAddr          = ":16379"
 	defaultMaxOffset          = 250 * time.Millisecond
 	defaultCacheSize          = 512 << 20 // 512 MB
 	defaultMemtableBudget     = 512 << 20 // 512 MB
@@ -65,6 +66,9 @@ type Context struct {
 
 	// PGAddr is the host:port to bind for Postgres traffic.
 	PGAddr string
+
+	// RedisAddr is the host:port to bind for Redis traffic.
+	RedisAddr string
 
 	// Stores is specified to enable durable key-value storage.
 	// Memory-backed key value stores may be optionally specified
@@ -179,6 +183,7 @@ func (ctx *Context) InitDefaults() {
 	ctx.Context.InitDefaults()
 	ctx.Addr = defaultAddr
 	ctx.PGAddr = defaultPGAddr
+	ctx.RedisAddr = defaultRedisAddr
 	ctx.MaxOffset = defaultMaxOffset
 	ctx.CacheSize = getDefaultCacheSize()
 	ctx.MemtableBudget = defaultMemtableBudget

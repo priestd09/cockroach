@@ -278,12 +278,7 @@ func (s *Server) Start() error {
 	log.Infof("starting %s server at %s", s.ctx.HTTPRequestScheme(), addr)
 	s.initHTTP()
 
-	host, _, err := net.SplitHostPort(addrStr)
-	if err != nil {
-		return err
-	}
-
-	if err := s.respServer.Start(util.MakeUnresolvedAddr("tcp", net.JoinHostPort(host, "16379"))); err != nil {
+	if err := s.respServer.Start(util.MakeUnresolvedAddr("tcp", s.ctx.RedisAddr)); err != nil {
 		return err
 	}
 

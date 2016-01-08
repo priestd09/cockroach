@@ -108,6 +108,7 @@ func TestUseCerts(t *testing.T) {
 	testCtx.User = security.NodeUser
 	testCtx.Addr = "127.0.0.1:0"
 	testCtx.PGAddr = "127.0.0.1:0"
+	testCtx.RedisAddr = "127.0.0.1:0"
 	s := &server.TestServer{Ctx: testCtx}
 	if err := s.Start(); err != nil {
 		t.Fatal(err)
