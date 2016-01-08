@@ -640,6 +640,34 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		}
 		incrby(key, i)
 
+	case "mget":
+		values := make([]*driver.Datum, len(c.Arguments))
+		err = e.db.Txn(func(txn *client.Txn) error {
+			for i, key := range c.Arguments {
+				values[i] = &driver.Datum{}
+				key = toKey(key)
+				val, ok, err := getString(txn, key, &d)
+				if err == errWrongType || !ok {
+					values[i].Payload = &driver.Datum_NullVal{}
+					continue
+				}
+				if err != nil {
+					return err
+				}
+				values[i].Payload = &driver.Datum_ByteVal{
+					ByteVal: []byte(val),
+				}
+			}
+			return nil
+		})
+		if err == nil {
+			d.Payload = &driver.Datum_ArrayVal{
+				ArrayVal: &driver.Array{
+					Values: values,
+				},
+			}
+		}
+
 	case "mset":
 		if len(c.Arguments)%2 != 0 {
 			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)

@@ -1,0 +1,13 @@
+redis> SET key1 "Hello"
+OK
+redis> SET key2 "World"
+OK
+redis> MGET key1 key2 nonexisting
+1) "Hello"
+2) "World"
+3) (nil)
+redis> RPUSH list 1
+(integer) 1
+redis> MGET key1 list
+1) "Hello"
+2) (nil)

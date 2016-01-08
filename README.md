@@ -51,7 +51,7 @@ Strings:
 - [x] getset
 - [x] incr
 - [x] incrby
-- [ ] mget
+- [x] mget
 - [x] mset
 - [ ] msetnx
 - [x] set
