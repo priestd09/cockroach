@@ -1,0 +1,8 @@
+redis> SET mykey "Hello"
+OK
+redis> SET myotherkey "World"
+OK
+redis> RENAMENX mykey myotherkey
+(integer) 0
+redis> GET myotherkey
+"World"

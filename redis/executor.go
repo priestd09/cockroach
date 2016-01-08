@@ -455,18 +455,50 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		key = toKey(key)
 		dst = toKey(dst)
 		err = e.db.Txn(func(txn *client.Txn) error {
-			val, ok, err := getString(txn, key, &d)
+			val, err := txn.Get(key)
 			if err != nil {
 				return err
 			}
-			if !ok {
+			if !val.Exists() {
 				return errors.New("no such key")
 			}
-			if err := putString(txn, dst, val); err != nil {
+			if err := txn.Put(dst, val.ValueBytes()); err != nil {
 				return err
 			}
 			d.Payload = &driver.Datum_StringVal{
 				StringVal: "OK",
+			}
+			return nil
+		})
+
+	case "renamenx":
+		var key, dst string
+		if err = c.Scan(&key, &dst); err != nil {
+			break
+		}
+		key = toKey(key)
+		dst = toKey(dst)
+		err = e.db.Txn(func(txn *client.Txn) error {
+			val, err := txn.Get(key)
+			if err != nil {
+				return err
+			}
+			if !val.Exists() {
+				return errors.New("no such key")
+			}
+			if dval, err := txn.Get(dst); err != nil {
+				return err
+			} else if dval.Exists() {
+				d.Payload = &driver.Datum_IntVal{
+					IntVal: 0,
+				}
+				return nil
+			}
+			if err := txn.Put(dst, val.ValueBytes()); err != nil {
+				return err
+			}
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: 1,
 			}
 			return nil
 		})

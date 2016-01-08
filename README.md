@@ -37,7 +37,7 @@ Keys:
 - [ ] keys
 - [x] flushall
 - [x] rename
-- [ ] renamenx
+- [x] renamenx
 - [ ] scan
 - [ ] type
 
