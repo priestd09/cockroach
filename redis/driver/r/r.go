@@ -14,8 +14,8 @@ import (
 
 func main() {
 	c := driver.Command{
-		User:    security.RootUser,
-		Command: "SET",
+		User:      security.RootUser,
+		Command:   "SET",
 		Arguments: []string{"A", "123"},
 	}
 	pb, err := c.Marshal()
@@ -27,10 +27,10 @@ func main() {
 	io.Copy(os.Stdout, r.Body)
 	fmt.Println()
 	r.Body.Close()
-	
+
 	c = driver.Command{
-		User:    security.RootUser,
-		Command: "GET",
+		User:      security.RootUser,
+		Command:   "GET",
 		Arguments: []string{"A"},
 	}
 	pb, err = c.Marshal()

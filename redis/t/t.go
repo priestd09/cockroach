@@ -26,8 +26,8 @@ var (
 	flagBench = flag.Bool("bench", false, "Benchmark")
 	flagOut   = flag.String("o", "", "Save output of crdb to named file.")
 	addrs     = [][]string{
-		[]string{"redis", "127.0.0.1", "6379"},
-		[]string{"crdb", "127.0.1.1", "16379"},
+		{"redis", "127.0.0.1", "6379"},
+		{"crdb", "127.0.1.1", "16379"},
 	}
 	benchmarks = []benchmark{
 		{
