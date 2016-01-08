@@ -93,7 +93,7 @@ func runTest(t *testing.T, host, port string, test logicTest) {
 	}
 	o := strings.TrimSpace(string(out))
 	if o != test.output {
-		t.Fatalf("%s: got: %s\nexpected: %s", test.arguments, o, test.output)
+		t.Fatalf("%s:%s: %s: got: %s\nexpected: %s", host, port, test.arguments, o, test.output)
 	}
 }
 
