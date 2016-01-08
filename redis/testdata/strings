@@ -1,0 +1,40 @@
+redis> GET mykey
+(nil)
+redis> SET mykey 10
+OK
+redis> INCR mykey
+(integer) 11
+redis> GET mykey
+"11"
+redis> INCRBY mykey 5
+(integer) 16
+redis> DECRBY mykey 4
+(integer) 12
+redis> DECR mykey
+(integer) 11
+redis> DEL mykey a
+(integer) 1
+redis> GET mykey
+(nil)
+redis> SET key1 "Hello"
+OK
+redis> EXISTS key1
+(integer) 1
+redis> EXISTS nosuchkey
+(integer) 0
+redis> SET key2 "World"
+OK
+redis> EXISTS key1 key2 nosuchkey
+(integer) 2
+redis> MSET key1 Hello key2 World
+OK
+redis> GET key1
+"Hello"
+redis> GET key2
+"World"
+redis> SET mykey Hello
+OK
+redis> RENAME mykey myotherkey
+OK
+redis> GET myotherkey
+"Hello"

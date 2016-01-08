@@ -282,6 +282,11 @@ func (ts *TestServer) PGPort() (string, error) {
 	return p, err
 }
 
+// RedisAddr returns the Redis-protocol endpoint's address.
+func (ts *TestServer) RedisAddr() string {
+	return ts.respServer.Addr().String()
+}
+
 // Stop stops the TestServer.
 func (ts *TestServer) Stop() {
 	if r := recover(); r != nil {

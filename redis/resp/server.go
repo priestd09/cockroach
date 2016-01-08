@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"strconv"
 	"sync"
 
@@ -75,6 +74,11 @@ func (s *Server) Start(addr net.Addr) error {
 		s.close()
 	})
 	return nil
+}
+
+// Addr returns this Server's address.
+func (s *Server) Addr() net.Addr {
+	return s.listener.Addr()
 }
 
 // serve connections on this listener until it is closed.
@@ -145,7 +149,6 @@ func splitCRLF(data []byte, atEOF bool) (advance int, token []byte, err error) {
 func (s *Server) serveConn(conn net.Conn) error {
 	scanner := bufio.NewScanner(conn)
 	scanner.Split(splitCRLF)
-	w := io.MultiWriter(os.Stdout, conn)
 	for scanner.Scan() {
 		b := scanner.Bytes()
 		if len(b) == 0 {
@@ -193,9 +196,8 @@ func (s *Server) serveConn(conn net.Conn) error {
 			Command:   args[0],
 			Arguments: args[1:],
 		}
-		fmt.Println("redis:", args)
 		resp, _, _ := s.context.Executor.Execute(c)
-		if err := renderReply(w, &resp.Response); err != nil {
+		if err := renderReply(conn, &resp.Response); err != nil {
 			return err
 		}
 	}
