@@ -503,6 +503,40 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			return nil
 		})
 
+	case "type":
+		var key, t string
+		if err = c.Scan(&key); err != nil {
+			break
+		}
+		key = toKey(key)
+		err = e.db.Txn(func(txn *client.Txn) error {
+			val, err := txn.Get(key)
+			if err != nil {
+				return err
+			}
+			if !val.Exists() {
+				t = "none"
+				return nil
+			}
+			var s string
+			var sl []string
+			if err := gob.NewDecoder(bytes.NewReader(val.ValueBytes())).Decode(&s); err == nil {
+				t = "string"
+				return nil
+			}
+			if err := gob.NewDecoder(bytes.NewReader(val.ValueBytes())).Decode(&sl); err == nil {
+				t = "list"
+				return nil
+			}
+			return fmt.Errorf("unknown type")
+		})
+		if err != nil {
+			break
+		}
+		d.Payload = &driver.Datum_StringVal{
+			StringVal: t,
+		}
+
 	// Strings.
 
 	case "decr":

@@ -39,7 +39,7 @@ Keys:
 - [x] rename
 - [x] renamenx
 - [ ] scan
-- [ ] type
+- [x] type
 
 Strings:
 
