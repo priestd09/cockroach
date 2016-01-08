@@ -61,7 +61,7 @@ Strings:
 
 # Notes
 
-Performance is likely a few orders of magnitude worse than native Redis.
+Performance is around 10 to 100 times slower than native Redis, depending on the operation.
 The telnet/curl style protocol is not supported.
 
 ---
