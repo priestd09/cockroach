@@ -43,7 +43,7 @@ Keys:
 
 Strings:
 
-- [ ] append
+- [x] append
 - [x] decr
 - [x] decrby
 - [x] get

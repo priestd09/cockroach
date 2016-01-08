@@ -539,6 +539,27 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 
 	// Strings.
 
+	case "append":
+		var key, value string
+		if err = c.Scan(&key, &value); err != nil {
+			break
+		}
+		key = toKey(key)
+		err = e.db.Txn(func(txn *client.Txn) error {
+			val, _, err := getString(&e.db, key, &d)
+			if err != nil {
+				return err
+			}
+			val += value
+			if err := putString(&e.db, key, val); err != nil {
+				return err
+			}
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: int64(len(val)),
+			}
+			return nil
+		})
+
 	case "decr":
 		var key string
 		if err = c.Scan(&key); err != nil {
