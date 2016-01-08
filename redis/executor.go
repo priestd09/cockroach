@@ -598,6 +598,30 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			ByteVal: []byte(val),
 		}
 
+	case "getset":
+		var key, value string
+		if err = c.Scan(&key, &value); err != nil {
+			break
+		}
+		key = toKey(key)
+		err = e.db.Txn(func(txn *client.Txn) error {
+			val, ok, err := getString(&e.db, key, &d)
+			if err != nil {
+				return err
+			}
+			if err := putString(&e.db, key, value); err != nil {
+				return err
+			}
+			if ok {
+				d.Payload = &driver.Datum_ByteVal{
+					ByteVal: []byte(val),
+				}
+			} else {
+				d.Payload = &driver.Datum_NullVal{}
+			}
+			return nil
+		})
+
 	case "incr":
 		var key string
 		if err = c.Scan(&key); err != nil {

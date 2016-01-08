@@ -48,7 +48,7 @@ Strings:
 - [x] decrby
 - [x] get
 - [ ] getrange
-- [ ] getset
+- [x] getset
 - [x] incr
 - [x] incrby
 - [ ] mget

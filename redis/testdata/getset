@@ -1,0 +1,14 @@
+redis> INCR mycounter
+(integer) 1
+redis> GETSET mycounter "0"
+"1"
+redis> GET mycounter
+"0"
+redis> SET mykey "Hello"
+OK
+redis> GETSET mykey "World"
+"Hello"
+redis> GET mykey
+"World"
+redis> GETSET other "value"
+(nil)
