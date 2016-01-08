@@ -10,18 +10,54 @@ This branch adds native Redis protocol support to CockroachDB. It is experimenta
 
 # Supported commands
 
-- decr
-- decrby
-- del
-- exists
-- get
-- incr
-- incrby
-- lrange
-- mset
-- rename
-- rpush
-- set
+Lists:
+
+- [x] blpop
+- [ ] brpop
+- [ ] brpoplpush
+- [x] lindex
+- [ ] linsert
+- [x] llen
+- [x] lpop
+- [x] lpush
+- [x] lpushx
+- [x] lrange
+- [ ] lrem
+- [ ] lset
+- [ ] ltrim
+- [ ] rpop
+- [x] rpoplpush
+- [x] rpush
+- [x] rpushx
+
+Keys:
+
+- [x] del
+- [x] exists
+- [ ] keys
+- [x] flushall
+- [x] rename
+- [ ] renamenx
+- [ ] scan
+- [ ] type
+
+Strings:
+
+- [ ] append
+- [x] decr
+- [x] decrby
+- [x] get
+- [ ] getrange
+- [ ] getset
+- [x] incr
+- [x] incrby
+- [ ] mget
+- [x] mset
+- [ ] msetnx
+- [x] set
+- [ ] setnx
+- [ ] setrange
+- [ ] strlen
 
 # Notes
 
