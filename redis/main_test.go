@@ -31,32 +31,35 @@ import (
 )
 
 var (
-	redisAddr = flag.String("redis-addr", "", "address of redis server; doesn't use cockroach if set; also enables benchmarks if set")
+	redisAddr = flag.String("redis-addr", "", "address of redis server; enables test and benchmark if set")
 	testdata  = flag.String("d", "testdata/*", "test data glob")
 )
 
 func TestCockroach(t *testing.T) {
-	var addr string
-
-	if *redisAddr == "" {
-		ctx := server.NewTestContext()
-		ctx.Insecure = true
-		s := &server.TestServer{Ctx: ctx}
-		if err := s.Start(); err != nil {
-			t.Fatal(err)
-		}
-		defer s.Stop()
-
-		addr = s.RedisAddr()
-	} else {
-		addr = *redisAddr
+	ctx := server.NewTestContext()
+	ctx.Insecure = true
+	s := &server.TestServer{Ctx: ctx}
+	if err := s.Start(); err != nil {
+		t.Fatal(err)
 	}
-
+	defer s.Stop()
+	addr := s.RedisAddr()
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		t.Fatal(err)
 	}
+	testLogic(t, host, port)
+}
 
+func TestRedis(t *testing.T) {
+	if *redisAddr == "" {
+		t.SkipNow()
+	}
+	addr := *redisAddr
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
 	testLogic(t, host, port)
 }
 
@@ -84,7 +87,6 @@ func testLogic(t *testing.T, host, port string) {
 
 func runTest(t *testing.T, host, port string, test logicTest) {
 	args := append([]string{"--no-raw", "-h", host, "-p", port}, test.arguments...)
-	fmt.Println(args)
 	out, err := exec.Command("redis-cli", args...).CombinedOutput()
 	if err != nil {
 		t.Fatal(err)
