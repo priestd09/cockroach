@@ -687,6 +687,40 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			return nil
 		})
 
+	case "msetnx":
+		if len(c.Arguments)%2 != 0 {
+			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
+			break
+		}
+		err = e.db.Txn(func(txn *client.Txn) error {
+			var v int64 = 1
+			for i := 0; i < len(c.Arguments); i += 2 {
+				key := c.Arguments[i]
+				key = toKey(key)
+				val, err := txn.Get(key)
+				if err != nil {
+					return err
+				}
+				if val.Exists() {
+					v = 0
+					break
+				}
+			}
+			if v == 1 {
+				for i := 0; i < len(c.Arguments); i += 2 {
+					key, value := c.Arguments[i], c.Arguments[i+1]
+					key = toKey(key)
+					if err = putString(&e.db, key, value); err != nil {
+						return err
+					}
+				}
+			}
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: v,
+			}
+			return nil
+		})
+
 	case "set":
 		var key, value string
 		if err = c.Scan(&key, &value); err != nil {
@@ -699,6 +733,30 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		d.Payload = &driver.Datum_StringVal{
 			StringVal: "OK",
 		}
+
+	case "setnx":
+		var key, value string
+		if err = c.Scan(&key, &value); err != nil {
+			break
+		}
+		key = toKey(key)
+		err = e.db.Txn(func(txn *client.Txn) error {
+			val, err := txn.Get(key)
+			if err != nil {
+				return err
+			}
+			var v int64
+			if !val.Exists() {
+				if err = putString(&e.db, key, value); err != nil {
+					return err
+				}
+				v = 1
+			}
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: v,
+			}
+			return nil
+		})
 	}
 	r := driver.Response{
 		Response: d,

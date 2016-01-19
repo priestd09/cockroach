@@ -53,9 +53,9 @@ Strings:
 - [x] incrby
 - [x] mget
 - [x] mset
-- [ ] msetnx
+- [x] msetnx
 - [x] set
-- [ ] setnx
+- [x] setnx
 - [ ] setrange
 - [ ] strlen
 
