@@ -759,6 +759,21 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			}
 			return nil
 		})
+
+	case "strlen":
+		var key string
+		if err = c.Scan(&key); err != nil {
+			break
+		}
+		key = toKey(key)
+		var val string
+		val, _, err = getString(&e.db, key, &d)
+		if err != nil {
+			break
+		}
+		d.Payload = &driver.Datum_IntVal{
+			IntVal: int64(len(val)),
+		}
 	}
 	r := driver.Response{
 		Response: d,

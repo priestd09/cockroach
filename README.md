@@ -57,7 +57,7 @@ Strings:
 - [x] set
 - [x] setnx
 - [ ] setrange
-- [ ] strlen
+- [x] strlen
 
 # Notes
 
