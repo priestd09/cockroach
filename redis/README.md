@@ -1,8 +1,7 @@
 # Redis testdata format
 
 Test cases start with `redis>`.
-Arguments are separated by spaces.
-Double quotes are removed (and not honored--space always separates arguments).
+Arguments are separated by spaces and may be grouped by double quotes.
 This allows examples from redis.io to be copied verbatim.
 
 Results follow on the next line until the following `redis>`.

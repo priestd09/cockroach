@@ -93,11 +93,12 @@ func runTest(t *testing.T, host, port string, test logicTest) {
 	}
 	o := strings.TrimSpace(string(out))
 	if o != test.output {
-		t.Fatalf("%s:%s: %s: got: %s\nexpected: %s", host, port, test.arguments, o, test.output)
+		t.Fatalf("%s:%s: %s: %s: got: %s\nexpected: %s", host, port, test.name, test.arguments, o, test.output)
 	}
 }
 
 type logicTest struct {
+	name      string
 	arguments []string
 	output    string
 }
@@ -132,11 +133,58 @@ func readTestdata(path string) ([]logicTest, error) {
 		if len(sp) != 2 {
 			return nil, fmt.Errorf("expected output: %s", group)
 		}
-		sp[0] = strings.Replace(sp[0], `"`, "", -1)
+		args := arger(sp[0])
+		for i, a := range args {
+			args[i] = strings.Replace(a, `"`, "", -1)
+		}
 		tests = append(tests, logicTest{
-			arguments: strings.Fields(sp[0]),
+			name:      path,
+			arguments: args,
 			output:    strings.TrimSpace(sp[1]),
 		})
 	}
 	return tests, nil
+}
+
+// arger converts s to arguments separated by spaces. Can use double quotes to group.
+func arger(s string) []string {
+	args := strings.Fields(s)
+	for i := 0; i < len(args); i++ {
+		if strings.HasPrefix(args[i], `"`) && !strings.HasSuffix(args[i], `"`) {
+			args[i] += " " + args[i+1]
+			args = append(args[:i+1], args[i+2:]...)
+			i--
+		}
+	}
+	for i, a := range args {
+		args[i] = strings.Replace(a, `"`, "", -1)
+	}
+	return args
+}
+
+func TestArger(t *testing.T) {
+	tests := []struct {
+		in  string
+		out []string
+	}{
+		{
+			`SET key val`,
+			[]string{"SET", "key", "val"},
+		},
+		{
+			`SET key "hello world"`,
+			[]string{"SET", "key", "hello world"},
+		},
+	}
+	for _, test := range tests {
+		args := arger(test.in)
+		if len(args) != len(test.out) {
+			t.Fatal(test.in)
+		}
+		for i, a := range args {
+			if a != test.out[i] {
+				t.Fatal(test.in)
+			}
+		}
+	}
 }
