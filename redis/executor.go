@@ -28,6 +28,7 @@ import (
 
 	"github.com/cockroachdb/cockroach/client"
 	"github.com/cockroachdb/cockroach/redis/driver"
+	"github.com/cockroachdb/cockroach/roachpb"
 )
 
 // An Executor executes Redis statements.
@@ -66,6 +67,7 @@ var (
 // On error, the returned integer is an HTTP error code.
 func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 	var d driver.Datum
+	var pErr *roachpb.Error
 	var err error
 	const RedisPrefix = "/redis/"
 	redisEnd := []byte(RedisPrefix)
@@ -79,14 +81,14 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 	_ = fromKey
 	incrby := func(key string, value int64) {
 		key = toKey(key)
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			i, _, err := getInt(txn, key, &d)
 			if err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			i += value
 			if err := putString(txn, key, strconv.FormatInt(i, 10)); err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			d.Payload = &driver.Datum_IntVal{
 				IntVal: i,
@@ -122,17 +124,17 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		}
 		until := time.Now().Add(time.Duration(t) * time.Second)
 		for {
-			err = e.db.Txn(func(txn *client.Txn) error {
+			pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 				for _, k := range keys {
 					sl, _, err := getList(txn, k, &d)
 					if err != nil {
-						return err
+						return roachpb.NewError(err)
 					}
 					if len(sl) == 0 {
 						continue
 					}
 					if err := putList(txn, k, sl[1:]); err != nil {
-						return err
+						return roachpb.NewError(err)
 					}
 					d.Payload = &driver.Datum_ByteVal{
 						ByteVal: []byte(sl[0]),
@@ -141,7 +143,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 				}
 				return nil
 			})
-			if err != nil || d.Payload != nil {
+			if pErr != nil || d.Payload != nil {
 				break
 			}
 			if time.Now().After(until) {
@@ -196,18 +198,18 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			break
 		}
 		key = toKey(key)
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			var sl []string
 			sl, _, err := getList(txn, key, &d)
 			if err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			if len(sl) == 0 {
 				d.Payload = &driver.Datum_NullVal{}
 				return nil
 			}
 			if err := putList(txn, key, sl[1:]); err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			d.Payload = &driver.Datum_ByteVal{
 				ByteVal: []byte(sl[0]),
@@ -221,14 +223,14 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			break
 		}
 		key := toKey(c.Arguments[0])
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			sl, _, err := getList(txn, key, &d)
 			if err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			sl = append(c.Arguments[1:], sl...)
 			if err := putList(txn, key, sl); err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			d.Payload = &driver.Datum_IntVal{
 				IntVal: int64(len(sl)),
@@ -242,16 +244,16 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			break
 		}
 		key := toKey(c.Arguments[0])
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			sl, _, err := getList(txn, key, &d)
 			if err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			if len(sl) > 0 {
 				sl = append(c.Arguments[1:], sl...)
 			}
 			if err := putList(txn, key, sl); err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			d.Payload = &driver.Datum_IntVal{
 				IntVal: int64(len(sl)),
@@ -320,10 +322,10 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		}
 		source = toKey(source)
 		destination = toKey(destination)
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			src, _, err := getList(txn, source, &d)
 			if err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			if len(src) == 0 {
 				d.Payload = &driver.Datum_NullVal{}
@@ -336,15 +338,15 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			} else {
 				dst, _, err := getList(txn, destination, &d)
 				if err != nil {
-					return err
+					return roachpb.NewError(err)
 				}
 				dst = append(dst, s)
 				if err := putList(txn, destination, dst); err != nil {
-					return err
+					return roachpb.NewError(err)
 				}
 			}
 			if err := putList(txn, source, src); err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			d.Payload = &driver.Datum_ByteVal{
 				ByteVal: []byte(s),
@@ -358,14 +360,14 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			break
 		}
 		key := toKey(c.Arguments[0])
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			sl, _, err := getList(txn, key, &d)
 			if err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			sl = append(sl, c.Arguments[1:]...)
 			if err := putList(txn, key, sl); err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			d.Payload = &driver.Datum_IntVal{
 				IntVal: int64(len(sl)),
@@ -379,16 +381,16 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			break
 		}
 		key := toKey(c.Arguments[0])
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			sl, _, err := getList(txn, key, &d)
 			if err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			if len(sl) > 0 {
 				sl = append(sl, c.Arguments[1:]...)
 			}
 			if err := putList(txn, key, sl); err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			d.Payload = &driver.Datum_IntVal{
 				IntVal: int64(len(sl)),
@@ -399,7 +401,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 	// Keys.
 
 	case "del":
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			var i int64
 			for _, key := range c.Arguments {
 				key = toKey(key)
@@ -422,7 +424,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		})
 
 	case "exists":
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			var i int64
 			for _, key := range c.Arguments {
 				key = toKey(key)
@@ -442,7 +444,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		})
 
 	case "flushall":
-		err = e.db.DelRange(RedisPrefix, redisEnd)
+		pErr = e.db.DelRange(RedisPrefix, redisEnd)
 		d.Payload = &driver.Datum_StringVal{
 			StringVal: "OK",
 		}
@@ -454,13 +456,13 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		}
 		key = toKey(key)
 		dst = toKey(dst)
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			val, err := txn.Get(key)
 			if err != nil {
 				return err
 			}
 			if !val.Exists() {
-				return errors.New("no such key")
+				return roachpb.NewErrorf("no such key")
 			}
 			if err := txn.Put(dst, val.ValueBytes()); err != nil {
 				return err
@@ -478,13 +480,13 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		}
 		key = toKey(key)
 		dst = toKey(dst)
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			val, err := txn.Get(key)
 			if err != nil {
 				return err
 			}
 			if !val.Exists() {
-				return errors.New("no such key")
+				return roachpb.NewErrorf("no such key")
 			}
 			if dval, err := txn.Get(dst); err != nil {
 				return err
@@ -509,7 +511,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			break
 		}
 		key = toKey(key)
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			val, err := txn.Get(key)
 			if err != nil {
 				return err
@@ -528,7 +530,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 				t = "list"
 				return nil
 			}
-			return fmt.Errorf("unknown type")
+			return roachpb.NewErrorf("unknown type")
 		})
 		if err != nil {
 			break
@@ -545,14 +547,14 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			break
 		}
 		key = toKey(key)
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			val, _, err := getString(&e.db, key, &d)
 			if err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			val += value
 			if err := putString(&e.db, key, val); err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			d.Payload = &driver.Datum_IntVal{
 				IntVal: int64(len(val)),
@@ -604,13 +606,13 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			break
 		}
 		key = toKey(key)
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			val, ok, err := getString(&e.db, key, &d)
 			if err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			if err := putString(&e.db, key, value); err != nil {
-				return err
+				return roachpb.NewError(err)
 			}
 			if ok {
 				d.Payload = &driver.Datum_ByteVal{
@@ -642,7 +644,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 
 	case "mget":
 		values := make([]*driver.Datum, len(c.Arguments))
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			for i, key := range c.Arguments {
 				values[i] = &driver.Datum{}
 				key = toKey(key)
@@ -652,7 +654,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 					continue
 				}
 				if err != nil {
-					return err
+					return roachpb.NewError(err)
 				}
 				values[i].Payload = &driver.Datum_ByteVal{
 					ByteVal: []byte(val),
@@ -673,12 +675,12 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
 			break
 		}
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			for i := 0; i < len(c.Arguments); i += 2 {
 				key, value := c.Arguments[i], c.Arguments[i+1]
 				key = toKey(key)
 				if err := putString(txn, key, value); err != nil {
-					return err
+					return roachpb.NewError(err)
 				}
 			}
 			d.Payload = &driver.Datum_StringVal{
@@ -692,7 +694,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
 			break
 		}
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			var v int64 = 1
 			for i := 0; i < len(c.Arguments); i += 2 {
 				key := c.Arguments[i]
@@ -711,7 +713,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 					key, value := c.Arguments[i], c.Arguments[i+1]
 					key = toKey(key)
 					if err = putString(&e.db, key, value); err != nil {
-						return err
+						return roachpb.NewError(err)
 					}
 				}
 			}
@@ -740,15 +742,15 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			break
 		}
 		key = toKey(key)
-		err = e.db.Txn(func(txn *client.Txn) error {
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
 			val, err := txn.Get(key)
 			if err != nil {
 				return err
 			}
 			var v int64
 			if !val.Exists() {
-				if err = putString(&e.db, key, value); err != nil {
-					return err
+				if err := putString(&e.db, key, value); err != nil {
+					return roachpb.NewError(err)
 				}
 				v = 1
 			}
@@ -760,6 +762,9 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 	}
 	r := driver.Response{
 		Response: d,
+	}
+	if pErr != nil {
+		err = pErr.GoError()
 	}
 	if err != nil {
 		if r.Response.Payload == nil {
@@ -774,9 +779,9 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 }
 
 func getInt(db runner, key string, d *driver.Datum) (i int64, ok bool, err error) {
-	val, err := db.Get(key)
-	if err != nil {
-		return 0, false, err
+	val, pErr := db.Get(key)
+	if pErr != nil {
+		return 0, false, pErr.GoError()
 	}
 	if !val.Exists() {
 		return 0, false, nil
@@ -800,7 +805,7 @@ func putString(db runner, key, value string) error {
 	if err := gob.NewEncoder(&buf).Encode(&value); err != nil {
 		return err
 	}
-	return db.Put(key, buf.Bytes())
+	return db.Put(key, buf.Bytes()).GoError()
 }
 
 func putList(db runner, key string, value []string) error {
@@ -808,13 +813,13 @@ func putList(db runner, key string, value []string) error {
 	if err := gob.NewEncoder(&buf).Encode(&value); err != nil {
 		return err
 	}
-	return db.Put(key, buf.Bytes())
+	return db.Put(key, buf.Bytes()).GoError()
 }
 
 func getString(db runner, key string, d *driver.Datum) (s string, ok bool, err error) {
-	val, err := db.Get(key)
-	if err != nil {
-		return "", false, err
+	val, pErr := db.Get(key)
+	if pErr != nil {
+		return "", false, pErr.GoError()
 	}
 	if !val.Exists() {
 		return "", false, nil
@@ -828,9 +833,9 @@ func getString(db runner, key string, d *driver.Datum) (s string, ok bool, err e
 }
 
 func getList(db runner, key string, d *driver.Datum) (sl []string, ok bool, err error) {
-	val, err := db.Get(key)
-	if err != nil {
-		return nil, false, err
+	val, pErr := db.Get(key)
+	if pErr != nil {
+		return nil, false, pErr.GoError()
 	}
 	if !val.Exists() {
 		return nil, false, nil
@@ -844,6 +849,6 @@ func getList(db runner, key string, d *driver.Datum) (sl []string, ok bool, err 
 }
 
 type runner interface {
-	Get(key interface{}) (client.KeyValue, error)
-	Put(key, value interface{}) error
+	Get(key interface{}) (client.KeyValue, *roachpb.Error)
+	Put(key, value interface{}) *roachpb.Error
 }
