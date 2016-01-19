@@ -280,26 +280,7 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		if sl, _, err = getList(&e.db, key, &d); err != nil {
 			break
 		}
-		if beg < 0 {
-			beg = len(sl) + beg
-		}
-		if end < 0 {
-			end = len(sl) + end
-		}
-		if beg < 0 {
-			beg = 0
-		}
-		if end < beg {
-			beg = 0
-			end = -1
-		}
-		end++
-		if beg > len(sl) {
-			beg = len(sl)
-		}
-		if end > len(sl) {
-			end = len(sl)
-		}
+		beg, end = ranger(len(sl), beg, end)
 		sl = sl[beg:end]
 		av := make([]*driver.Datum, len(sl))
 		for i, s := range sl {
@@ -600,6 +581,31 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			ByteVal: []byte(val),
 		}
 
+	case "getrange":
+		var key, start, stop string
+		if err = c.Scan(&key, &start, &stop); err != nil {
+			break
+		}
+		key = toKey(key)
+		var beg, end int
+		beg, err = strconv.Atoi(start)
+		if err != nil {
+			break
+		}
+		end, err = strconv.Atoi(stop)
+		if err != nil {
+			break
+		}
+		var val string
+		val, _, err = getString(&e.db, key, &d)
+		if err != nil {
+			break
+		}
+		beg, end = ranger(len(val), beg, end)
+		d.Payload = &driver.Datum_ByteVal{
+			ByteVal: []byte(val[beg:end]),
+		}
+
 	case "getset":
 		var key, value string
 		if err = c.Scan(&key, &value); err != nil {
@@ -866,4 +872,28 @@ func getList(db runner, key string, d *driver.Datum) (sl []string, ok bool, err 
 type runner interface {
 	Get(key interface{}) (client.KeyValue, *roachpb.Error)
 	Put(key, value interface{}) *roachpb.Error
+}
+
+func ranger(ln, beg, end int) (low, high int) {
+	if beg < 0 {
+		beg = ln + beg
+	}
+	if end < 0 {
+		end = ln + end
+	}
+	if beg < 0 {
+		beg = 0
+	}
+	if end < beg {
+		beg = 0
+		end = -1
+	}
+	end++
+	if beg > ln {
+		beg = ln
+	}
+	if end > ln {
+		end = ln
+	}
+	return beg, end
 }
