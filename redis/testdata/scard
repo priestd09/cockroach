@@ -1,0 +1,8 @@
+redis> SADD myset "Hello"
+(integer) 1
+redis> SADD myset "World"
+(integer) 1
+redis> SCARD myset
+(integer) 2
+redis> SCARD other
+(integer) 0

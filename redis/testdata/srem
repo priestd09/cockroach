@@ -1,0 +1,13 @@
+redis>  SADD myset "one"
+(integer) 1
+redis>  SADD myset "two"
+(integer) 1
+redis>  SADD myset "three"
+(integer) 1
+redis>  SREM myset "one"
+(integer) 1
+redis>  SREM myset "four"
+(integer) 0
+redis>  SMEMBERS myset
+1) "three"
+2) "two"

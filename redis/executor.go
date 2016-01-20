@@ -22,6 +22,7 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -780,6 +781,127 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 		d.Payload = &driver.Datum_IntVal{
 			IntVal: int64(len(val)),
 		}
+
+	// Sets.
+
+	case "sadd":
+		if len(c.Arguments) < 2 {
+			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
+			break
+		}
+		key := toKey(c.Arguments[0])
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
+			set, _, err := getSet(&e.db, key, &d)
+			if err != nil {
+				return roachpb.NewError(err)
+			}
+			var i int64
+			for _, a := range c.Arguments[1:] {
+				if _, ok := set[a]; !ok {
+					set[a] = struct{}{}
+					i++
+				}
+			}
+			if err := putSet(txn, key, set); err != nil {
+				return roachpb.NewError(err)
+			}
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: i,
+			}
+			return nil
+		})
+
+	case "scard":
+		var key string
+		if err = c.Scan(&key); err != nil {
+			break
+		}
+		key = toKey(key)
+		set, _, err := getSet(&e.db, key, &d)
+		if err != nil {
+			break
+		}
+		d.Payload = &driver.Datum_IntVal{
+			IntVal: int64(len(set)),
+		}
+
+	case "sismember":
+		var key, member string
+		if err = c.Scan(&key, &member); err != nil {
+			break
+		}
+		key = toKey(key)
+		set, _, err := getSet(&e.db, key, &d)
+		if err != nil {
+			break
+		}
+		var i int64
+		if _, ok := set[member]; ok {
+			i = 1
+		}
+		d.Payload = &driver.Datum_IntVal{
+			IntVal: i,
+		}
+
+	case "smembers":
+		var key string
+		if err = c.Scan(&key); err != nil {
+			break
+		}
+		key = toKey(key)
+		set, _, err := getSet(&e.db, key, &d)
+		if err != nil {
+			break
+		}
+		av := make([]*driver.Datum, len(set))
+		i := 0
+		strs := make([]string, len(set))
+		for s := range set {
+			strs[i] = s
+			i++
+		}
+		sort.Strings(strs)
+		for i, s := range strs {
+			av[i] = &driver.Datum{
+				Payload: &driver.Datum_ByteVal{
+					ByteVal: []byte(s),
+				},
+			}
+			i++
+		}
+		d.Payload = &driver.Datum_ArrayVal{
+			ArrayVal: &driver.Array{
+				Values: av,
+			},
+		}
+
+	case "srem":
+		if len(c.Arguments) < 2 {
+			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
+			break
+		}
+		key := toKey(c.Arguments[0])
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
+			set, _, err := getSet(&e.db, key, &d)
+			if err != nil {
+				return roachpb.NewError(err)
+			}
+			var i int64
+			for _, a := range c.Arguments[1:] {
+				if _, ok := set[a]; ok {
+					delete(set, a)
+					i++
+				}
+			}
+			if err := putSet(txn, key, set); err != nil {
+				return roachpb.NewError(err)
+			}
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: i,
+			}
+			return nil
+		})
+
 	}
 	r := driver.Response{
 		Response: d,
@@ -868,6 +990,32 @@ func getList(db runner, key string, d *driver.Datum) (sl []string, ok bool, err 
 	d.Payload = datumWrongType
 	return nil, false, err
 }
+
+func getSet(db runner, key string, d *driver.Datum) (set Set, ok bool, err error) {
+	val, pErr := db.Get(key)
+	if pErr != nil {
+		return nil, false, pErr.GoError()
+	}
+	if !val.Exists() {
+		return make(Set), false, nil
+	}
+	r := bytes.NewReader(val.ValueBytes())
+	if err = gob.NewDecoder(r).Decode(&set); err == nil {
+		return set, true, nil
+	}
+	d.Payload = datumWrongType
+	return nil, false, err
+}
+
+func putSet(db runner, key string, value Set) error {
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(&value); err != nil {
+		return err
+	}
+	return db.Put(key, buf.Bytes()).GoError()
+}
+
+type Set map[string]struct{}
 
 type runner interface {
 	Get(key interface{}) (client.KeyValue, *roachpb.Error)

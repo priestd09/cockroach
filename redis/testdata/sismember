@@ -1,0 +1,8 @@
+redis> SADD myset "one"
+(integer) 1
+redis> SISMEMBER myset "one"
+(integer) 1
+redis> SISMEMBER myset "two"
+(integer) 0
+redis> SISMEMBER other "test"
+(integer) 0

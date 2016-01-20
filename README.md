@@ -59,6 +59,24 @@ Strings:
 - [ ] setrange
 - [x] strlen
 
+Sets:
+
+- [x] sadd
+- [x] scard
+- [ ] sdiff
+- [ ] sdiffstore
+- [ ] sinter
+- [ ] sinterstore
+- [x] sismember
+- [x] smembers
+- [ ] smove
+- [ ] spop
+- [ ] srandmember
+- [x] srem
+- [ ] sscan
+- [ ] sunion
+- [ ] sunionstore
+
 # Notes
 
 Performance is around 10 to 100 times slower than native Redis, depending on the operation.
