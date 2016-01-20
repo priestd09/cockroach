@@ -902,6 +902,76 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 			return nil
 		})
 
+	// Hashes.
+
+	case "hget":
+		var key, field string
+		if err = c.Scan(&key, &field); err != nil {
+			break
+		}
+		key = toKey(key)
+		hash, _, err := getHash(&e.db, key, &d)
+		if err != nil {
+			break
+		}
+		v, ok := hash[field]
+		if !ok {
+			d.Payload = &driver.Datum_NullVal{}
+			break
+		}
+		d.Payload = &driver.Datum_ByteVal{
+			ByteVal: []byte(v),
+		}
+
+	case "hmset":
+		if n := len(c.Arguments); n%2 != 1 || n < 3 {
+			err = fmt.Errorf(errWrongNumberOfArguments, c.Command)
+			break
+		}
+		key := toKey(c.Arguments[0])
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
+			hash, _, err := getHash(txn, key, &d)
+			if err != nil {
+				return roachpb.NewError(err)
+			}
+			for i := 1; i < len(c.Arguments); i += 2 {
+				field, value := c.Arguments[i], c.Arguments[i+1]
+				hash[field] = value
+			}
+			if err := putHash(txn, key, hash); err != nil {
+				return roachpb.NewError(err)
+			}
+			d.Payload = &driver.Datum_StringVal{
+				StringVal: "OK",
+			}
+			return nil
+		})
+
+	case "hset":
+		var key, field, value string
+		if err = c.Scan(&key, &field, &value); err != nil {
+			break
+		}
+		key = toKey(key)
+		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
+			hash, _, err := getHash(&e.db, key, &d)
+			if err != nil {
+				return roachpb.NewError(err)
+			}
+			var i int64
+			if _, ok := hash[field]; !ok {
+				i = 1
+			}
+			hash[field] = value
+			if err := putHash(txn, key, hash); err != nil {
+				return roachpb.NewError(err)
+			}
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: i,
+			}
+			return nil
+		})
+
 	}
 	r := driver.Response{
 		Response: d,
@@ -1016,6 +1086,32 @@ func putSet(db runner, key string, value Set) error {
 }
 
 type Set map[string]struct{}
+
+func getHash(db runner, key string, d *driver.Datum) (set Hash, ok bool, err error) {
+	val, pErr := db.Get(key)
+	if pErr != nil {
+		return nil, false, pErr.GoError()
+	}
+	if !val.Exists() {
+		return make(Hash), false, nil
+	}
+	r := bytes.NewReader(val.ValueBytes())
+	if err = gob.NewDecoder(r).Decode(&set); err == nil {
+		return set, true, nil
+	}
+	d.Payload = datumWrongType
+	return nil, false, err
+}
+
+func putHash(db runner, key string, value Hash) error {
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(&value); err != nil {
+		return err
+	}
+	return db.Put(key, buf.Bytes()).GoError()
+}
+
+type Hash map[string]string
 
 type runner interface {
 	Get(key interface{}) (client.KeyValue, *roachpb.Error)

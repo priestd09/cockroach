@@ -1,0 +1,4 @@
+redis> HSET myhash field1 "Hello"
+(integer) 1
+redis> HGET myhash field1
+"Hello"

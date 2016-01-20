@@ -77,6 +77,12 @@ Sets:
 - [ ] sunion
 - [ ] sunionstore
 
+Hashes:
+
+- [x] hget
+- [x] hmset
+- [x] hset
+
 # Notes
 
 Performance is around 10 to 100 times slower than native Redis, depending on the operation.
