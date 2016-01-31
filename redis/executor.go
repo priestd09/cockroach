@@ -502,13 +502,13 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 				t = "none"
 				return nil
 			}
-			var s string
-			var sl []string
-			if err := gob.NewDecoder(bytes.NewReader(val.ValueBytes())).Decode(&s); err == nil {
+			b := val.ValueBytes()
+			if strings.HasPrefix(string(b), prefixString) {
 				t = "string"
 				return nil
 			}
-			if err := gob.NewDecoder(bytes.NewReader(val.ValueBytes())).Decode(&sl); err == nil {
+			var sl []string
+			if err := gob.NewDecoder(bytes.NewReader(b)).Decode(&sl); err == nil {
 				t = "list"
 				return nil
 			}
@@ -991,34 +991,25 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 	return r, 200, nil
 }
 
+const (
+	prefixString = "$"
+)
+
 func getInt(db runner, key string, d *driver.Datum) (i int64, ok bool, err error) {
-	val, pErr := db.Get(key)
-	if pErr != nil {
-		return 0, false, pErr.GoError()
+	s, ok, err := getString(db, key, d)
+	if !ok || err != nil {
+		return 0, ok, err
 	}
-	if !val.Exists() {
-		return 0, false, nil
+	i, err = strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		d.Payload = datumNotInteger
+		return 0, false, err
 	}
-	var s string
-	r := bytes.NewReader(val.ValueBytes())
-	if err = gob.NewDecoder(r).Decode(&s); err == nil {
-		i, err = strconv.ParseInt(s, 10, 64)
-		if err != nil {
-			d.Payload = datumNotInteger
-			return 0, false, err
-		}
-		return i, true, nil
-	}
-	d.Payload = datumWrongType
-	return 0, false, errWrongType
+	return i, true, nil
 }
 
 func putString(db runner, key, value string) error {
-	var buf bytes.Buffer
-	if err := gob.NewEncoder(&buf).Encode(&value); err != nil {
-		return err
-	}
-	return db.Put(key, buf.Bytes()).GoError()
+	return db.Put(key, []byte(prefixString+value)).GoError()
 }
 
 func putList(db runner, key string, value []string) error {
@@ -1037,9 +1028,9 @@ func getString(db runner, key string, d *driver.Datum) (s string, ok bool, err e
 	if !val.Exists() {
 		return "", false, nil
 	}
-	r := bytes.NewReader(val.ValueBytes())
-	if err = gob.NewDecoder(r).Decode(&s); err == nil {
-		return s, true, nil
+	s = string(val.ValueBytes())
+	if strings.HasPrefix(s, prefixString) {
+		return s[1:], true, nil
 	}
 	d.Payload = datumWrongType
 	return "", false, errWrongType
