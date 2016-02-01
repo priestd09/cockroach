@@ -82,17 +82,39 @@ func (e *Executor) Execute(c driver.Command) (driver.Response, int, error) {
 	_ = fromKey
 	incrby := func(key string, value int64) {
 		key = toKey(key)
+
+		// Attempt to increment the fast way.
+		if v, err := e.db.Inc(key, value); err == nil {
+			d.Payload = &driver.Datum_IntVal{
+				IntVal: v.ValueInt(),
+			}
+			return
+		}
+		// We either have a string or another data type. If it's a string, delete
+		// and recreate using db.Inc. If it's something else, error.
 		pErr = e.db.Txn(func(txn *client.Txn) *roachpb.Error {
-			i, _, err := getInt(txn, key, &d)
+			s, ok, err := getString(txn, key, &d)
 			if err != nil {
 				return roachpb.NewError(err)
 			}
-			i += value
-			if err := putString(txn, key, strconv.FormatInt(i, 10)); err != nil {
-				return roachpb.NewError(err)
+			var i int64
+			if ok {
+				i, err = strconv.ParseInt(s, 10, 64)
+				if err != nil {
+					d.Payload = datumNotInteger
+					return nil
+				}
 			}
-			d.Payload = &driver.Datum_IntVal{
-				IntVal: i,
+			i += value
+			if err := txn.Del(key); err != nil {
+				return err
+			}
+			if v, err := txn.Inc(key, i); err != nil {
+				return err
+			} else {
+				d.Payload = &driver.Datum_IntVal{
+					IntVal: v.ValueInt(),
+				}
 			}
 			return nil
 		})
@@ -995,19 +1017,6 @@ const (
 	prefixString = "$"
 )
 
-func getInt(db runner, key string, d *driver.Datum) (i int64, ok bool, err error) {
-	s, ok, err := getString(db, key, d)
-	if !ok || err != nil {
-		return 0, ok, err
-	}
-	i, err = strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		d.Payload = datumNotInteger
-		return 0, false, err
-	}
-	return i, true, nil
-}
-
 func putString(db runner, key, value string) error {
 	return db.Put(key, []byte(prefixString+value)).GoError()
 }
@@ -1028,9 +1037,14 @@ func getString(db runner, key string, d *driver.Datum) (s string, ok bool, err e
 	if !val.Exists() {
 		return "", false, nil
 	}
-	s = string(val.ValueBytes())
-	if strings.HasPrefix(s, prefixString) {
-		return s[1:], true, nil
+	switch val.Value.GetTag() {
+	case roachpb.ValueType_BYTES:
+		s = string(val.ValueBytes())
+		if strings.HasPrefix(s, prefixString) {
+			return s[1:], true, nil
+		}
+	case roachpb.ValueType_INT:
+		return strconv.FormatInt(val.ValueInt(), 10), true, nil
 	}
 	d.Payload = datumWrongType
 	return "", false, errWrongType
