@@ -83,9 +83,16 @@ Hashes:
 - [x] hmset
 - [x] hset
 
+# Performance
+
+**As we are still in Alpha and have lots of performance work to do, these numbers should not be interpreted as representative of eventual CockroachDB performance.** These numbers describe some simple benchmarks performed on a single-node CockroachDB cluster.
+
+String operations (`GET`, `SET`, `INCR`, etc.) are generally 20x slower.
+
+List and Set operations are around 50 to 80x slower, and get worse as the list or set increases in size.
+
 # Notes
 
-Performance is around 10 to 100 times slower than native Redis, depending on the operation.
 The telnet/curl style protocol is not supported.
 
 ---

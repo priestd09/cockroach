@@ -18,7 +18,6 @@
 package redis_test
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/garyburd/redigo/redis"
@@ -102,28 +101,46 @@ func BenchmarkIncr_Cockroach(b *testing.B) {
 	benchmarkCockroach(b, runBenchmarkIncr)
 }
 
-func runBenchmarkSetIncrGetDel(c redis.Conn) error {
-	if _, err := c.Do("SET", "a", 5); err != nil {
-		return err
+func runBenchmarkLpush(c redis.Conn) error {
+	for i := 0; i < 100; i++ {
+		if _, err := c.Do("LPUSH", "mylist", i); err != nil {
+			return err
+		}
 	}
-	if _, err := c.Do("INCRBY", "a", 2); err != nil {
-		return err
-	}
-	if res, err := redis.String(c.Do("GET", "a")); err != nil {
-		return err
-	} else if res != "7" {
-		return fmt.Errorf("expected 7")
-	}
-	if _, err := c.Do("DEL", "a"); err != nil {
-		return err
+	for i := 0; i < 10; i++ {
+		if _, err := c.Do("LPOP", "mylist"); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func BenchmarkSetIncrGetDel_Redis(b *testing.B) {
-	benchmarkRedis(b, runBenchmarkSetIncrGetDel)
+func BenchmarkLpush_Redis(b *testing.B) {
+	benchmarkRedis(b, runBenchmarkLpush)
 }
 
-func BenchmarkSetIncrGetDel_Cockroach(b *testing.B) {
-	benchmarkCockroach(b, runBenchmarkSetIncrGetDel)
+func BenchmarkLpush_Cockroach(b *testing.B) {
+	benchmarkCockroach(b, runBenchmarkLpush)
+}
+
+func runBenchmarkSadd(c redis.Conn) error {
+	for i := 0; i < 100; i++ {
+		if _, err := c.Do("SADD", "myset", i%20); err != nil {
+			return err
+		}
+	}
+	for i := 0; i < 10; i++ {
+		if _, err := c.Do("SREM", "myset", i * 4); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func BenchmarkSadd_Redis(b *testing.B) {
+	benchmarkRedis(b, runBenchmarkSadd)
+}
+
+func BenchmarkSadd_Cockroach(b *testing.B) {
+	benchmarkCockroach(b, runBenchmarkSadd)
 }
