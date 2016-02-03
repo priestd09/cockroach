@@ -87,9 +87,9 @@ Hashes:
 
 **As we are still in Alpha and have lots of performance work to do, these numbers should not be interpreted as representative of eventual CockroachDB performance.** These numbers describe some simple benchmarks performed on a single-node CockroachDB cluster.
 
-String operations (`GET`, `SET`, `INCR`, etc.) are generally 20x slower.
+String and key operations (`GET`, `SET`, `INCR`, etc.) are 10 to 20x slower.
 
-List and Set operations are around 50 to 80x slower, and get worse as the list or set increases in size.
+List and Set operations are slower, and get worse as the list or set increases in size. This is mostly due to my bad implementation of them and not CockroachDB's performance.
 
 # Notes
 
