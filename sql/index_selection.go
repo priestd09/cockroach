@@ -27,6 +27,8 @@ import (
 	"github.com/cockroachdb/cockroach/sql/sqlbase"
 	"github.com/cockroachdb/cockroach/util/encoding"
 	"github.com/cockroachdb/cockroach/util/log"
+	"github.com/golang/geo/s1"
+	"github.com/golang/geo/s2"
 )
 
 const nonCoveringIndexPenalty = 10
@@ -428,6 +430,8 @@ func getQValColIdx(expr parser.Expr) (ok bool, colIdx int) {
 func (v *indexInfo) makeOrConstraints(orExprs []parser.TypedExprs) error {
 	constraints := make(orIndexConstraints, len(orExprs))
 	for i, e := range orExprs {
+		var buf bytes.Buffer
+		e[0].Format(&buf, parser.FmtSimple)
 		var err error
 		constraints[i], err = v.makeIndexConstraints(e)
 		if err != nil {
@@ -524,13 +528,58 @@ func (v *indexInfo) makeIndexConstraints(andExprs parser.TypedExprs) (indexConst
 			if c, ok := e.(*parser.ComparisonExpr); ok {
 				var tupleMap []int
 
-				if ok, colIdx := getQValColIdx(c.Left); ok && v.desc.Columns[colIdx].ID != colID {
-					// This expression refers to a column other than the one we're
-					// looking for.
+				if _, ok := c.Right.(parser.Datum); !ok {
 					continue
 				}
 
-				if _, ok := c.Right.(parser.Datum); !ok {
+				geoDone := func() (done bool) {
+					if !isGeoFunc(c.Left) {
+						return false
+					}
+					done = true
+					f := c.Left.(*parser.FuncExpr)
+					dist := c.Right.(*parser.DFloat)
+					pt := f.Exprs[1].(*parser.DGeography)
+					ok, colIdx := getQValColIdx(f.Exprs[0])
+					if !ok || v.desc.Columns[colIdx].ID != colID {
+						return
+					}
+					cap := s2.CapFromCenterAngle(pt.Point, s1.Angle(*dist))
+
+					rc := &s2.RegionCoverer{MaxLevel: 30, MaxCells: 1}
+					r := s2.Region(cap)
+					covering := rc.Covering(r)
+					if len(covering) != 1 {
+						return
+					}
+					startCov := covering[0]
+					endCov := covering[0].Next()
+					startPt := pt.AttachCellID(startCov)
+					endPt := pt.AttachCellID(endCov)
+					// TODO(mjibson): don't set these without checking they already are set
+					*startExpr = &parser.ComparisonExpr{
+						Operator: parser.GE,
+						Left:     f.Exprs[0],
+						Right:    startPt,
+					}
+					// startCov is the last valid cell, so no upper bound.
+					if endCov == startCov.ChildEnd() {
+						return
+					}
+					*endExpr = &parser.ComparisonExpr{
+						Operator: parser.LE,
+						Left:     f.Exprs[0],
+						Right:    endPt,
+					}
+					return
+				}()
+				if geoDone {
+					break exprLoop
+				}
+
+				if ok, colIdx := getQValColIdx(c.Left); ok && v.desc.Columns[colIdx].ID != colID {
+					// This expression refers to a column other than the one we're
+					// looking for.
 					continue
 				}
 
@@ -1209,6 +1258,7 @@ func makeSpansForIndexConstraints(
 			n++
 		}
 	}
+
 	return resultSpans[:n]
 }
 

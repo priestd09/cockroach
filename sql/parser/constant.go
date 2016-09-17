@@ -306,6 +306,7 @@ var strValAvailAllParsable = []Datum{
 	TypeTimestamp,
 	TypeTimestampTZ,
 	TypeInterval,
+	TypeGeography,
 }
 var strValAvailBytesString = []Datum{TypeBytes, TypeString}
 var strValAvailBytes = []Datum{TypeBytes}
@@ -338,6 +339,8 @@ func (expr *StrVal) ResolveAsType(ctx *SemaContext, typ Datum) (Datum, error) {
 		return ParseDTimestampTZ(expr.s, ctx.getLocation(), time.Microsecond)
 	case TypeInterval:
 		return ParseDInterval(expr.s)
+	case TypeGeography:
+		return ParseDGeography(expr.s)
 	default:
 		return nil, fmt.Errorf("could not resolve %T %v into a %T", expr, expr, typ)
 	}

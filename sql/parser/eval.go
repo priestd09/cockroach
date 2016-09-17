@@ -1936,6 +1936,13 @@ func (expr *IsOfTypeExpr) Eval(ctx *EvalContext) (Datum, error) {
 				return MakeDBool(result), nil
 			}
 		}
+
+	case *DGeography:
+		for _, t := range expr.Types {
+			if _, ok := t.(*GeographyColType); ok {
+				return MakeDBool(result), nil
+			}
+		}
 	}
 
 	return MakeDBool(!result), nil
@@ -2138,6 +2145,11 @@ func (t *DTimestampTZ) Eval(_ *EvalContext) (Datum, error) {
 
 // Eval implements the TypedExpr interface.
 func (t *DTuple) Eval(_ *EvalContext) (Datum, error) {
+	return t, nil
+}
+
+// Eval implements the TypedExpr interface.
+func (t *DGeography) Eval(_ *EvalContext) (Datum, error) {
 	return t, nil
 }
 

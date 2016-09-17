@@ -18,6 +18,7 @@ package sqlbase
 
 import (
 	"fmt"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -111,6 +112,9 @@ func MakeColumnDefDescs(d *parser.ColumnTableDef) (*ColumnDescriptor, *IndexDesc
 	case *parser.BytesColType:
 		col.Type.Kind = ColumnType_BYTES
 		colDatumType = parser.TypeBytes
+	case *parser.GeographyColType:
+		col.Type.Kind = ColumnType_GEOGRAPHY
+		colDatumType = parser.TypeGeography
 	default:
 		return nil, nil, errors.Errorf("unexpected type %T", t)
 	}
@@ -399,6 +403,11 @@ func EncodeTableKey(b []byte, val parser.Datum, dir encoding.Direction) ([]byte,
 			return encoding.EncodeDurationAscending(b, t.Duration)
 		}
 		return encoding.EncodeDurationDescending(b, t.Duration)
+	case *parser.DGeography:
+		if dir == encoding.Ascending {
+			return encoding.EncodeGeographyAscending(b, uint64(t.CellID), t.JSON), nil
+		}
+		return encoding.EncodeGeographyDescending(b, uint64(t.CellID), t.JSON), nil
 	case *parser.DTuple:
 		for _, datum := range *t {
 			var err error
@@ -439,6 +448,8 @@ func EncodeTableValue(appendTo []byte, colID ColumnID, val parser.Datum) ([]byte
 		return encoding.EncodeTimeValue(appendTo, uint32(colID), t.Time), nil
 	case *parser.DInterval:
 		return encoding.EncodeDurationValue(appendTo, uint32(colID), t.Duration), nil
+	case *parser.DGeography:
+		return encoding.EncodeBytesValue(appendTo, uint32(colID), []byte(t.JSON)), nil
 	}
 	return nil, errors.Errorf("unable to encode table value: %T", val)
 }
@@ -740,6 +751,7 @@ type DatumAlloc struct {
 	dtimestampAlloc   []parser.DTimestamp
 	dtimestampTzAlloc []parser.DTimestampTZ
 	dintervalAlloc    []parser.DInterval
+	dgeographyAlloc   []parser.DGeography
 }
 
 // NewDInt allocates a DInt.
@@ -850,6 +862,18 @@ func (a *DatumAlloc) NewDInterval(v parser.DInterval) *parser.DInterval {
 	return r
 }
 
+// NewDGeography allocates a DGeography.
+func (a *DatumAlloc) NewDGeography(v parser.DGeography) *parser.DGeography {
+	buf := &a.dgeographyAlloc
+	if len(*buf) == 0 {
+		*buf = make([]parser.DGeography, datumAllocSize)
+	}
+	r := &(*buf)[0]
+	*r = v
+	*buf = (*buf)[1:]
+	return r
+}
+
 // DecodeTableKey decodes a table key/value.
 func DecodeTableKey(
 	a *DatumAlloc, valType parser.Datum, key []byte, dir encoding.Direction,
@@ -948,10 +972,27 @@ func DecodeTableKey(
 			rkey, d, err = encoding.DecodeDurationDescending(key)
 		}
 		return a.NewDInterval(parser.DInterval{Duration: d}), rkey, err
+	case *parser.DGeography:
+		var s string
+		if dir == encoding.Ascending {
+			rkey, _, s, err = encoding.DecodeGeographyAscending(key)
+		} else {
+			rkey, _, s, err = encoding.DecodeGeographyDescending(key)
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		g, err := parser.ParseDGeography(s)
+		if err != nil {
+			return nil, nil, err
+		}
+		return a.NewDGeography(*g), rkey, err
 	default:
 		return nil, nil, errors.Errorf("TODO(pmattis): decoded index key: %s", valType.Type())
 	}
 }
+
+var once sync.Once
 
 // DecodeTableValue decodes a value encoded by EncodeTableValue.
 func DecodeTableValue(a *DatumAlloc, valType parser.Datum, b []byte) (parser.Datum, []byte, error) {
@@ -1007,6 +1048,14 @@ func DecodeTableValue(a *DatumAlloc, valType parser.Datum, b []byte) (parser.Dat
 		var d duration.Duration
 		b, d, err = encoding.DecodeDurationValue(b)
 		return a.NewDInterval(parser.DInterval{Duration: d}), b, err
+	case *parser.DGeography:
+		var data []byte
+		b, data, err = encoding.DecodeBytesValue(b)
+		if err != nil {
+			return nil, nil, err
+		}
+		g, err := parser.ParseDGeography(string(data))
+		return g, b, err
 	default:
 		return nil, nil, errors.Errorf("TODO(pmattis): decoded index value: %s", valType.Type())
 	}
@@ -1134,6 +1183,9 @@ func CheckColumnType(col ColumnDescriptor, val parser.Datum, pmap *parser.Placeh
 	case ColumnType_INTERVAL:
 		_, ok = val.(*parser.DInterval)
 		set = parser.TypeInterval
+	case ColumnType_GEOGRAPHY:
+		_, ok = val.(*parser.DGeography)
+		set = parser.TypeGeography
 	default:
 		return errors.Errorf("unsupported column type: %s", col.Type.Kind)
 	}
@@ -1220,6 +1272,11 @@ func MarshalColumnValue(col ColumnDescriptor, val parser.Datum) (roachpb.Value, 
 			err := r.SetDuration(v.Duration)
 			return r, err
 		}
+	case ColumnType_GEOGRAPHY:
+		if v, ok := val.(*parser.DGeography); ok {
+			r.SetString(v.JSON)
+			return r, nil
+		}
 	default:
 		return r, errors.Errorf("unsupported column type: %s", col.Type.Kind)
 	}
@@ -1300,6 +1357,12 @@ func UnmarshalColumnValue(
 			return nil, err
 		}
 		return a.NewDInterval(parser.DInterval{Duration: d}), nil
+	case ColumnType_GEOGRAPHY:
+		v, err := value.GetBytes()
+		if err != nil {
+			return nil, err
+		}
+		return parser.ParseDGeography(string(v))
 	default:
 		return nil, errors.Errorf("unsupported column type: %s", kind)
 	}

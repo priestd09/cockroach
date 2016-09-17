@@ -31,6 +31,9 @@ import (
 
 	"github.com/cockroachdb/cockroach/roachpb"
 	"github.com/cockroachdb/cockroach/util/duration"
+	"github.com/golang/geo/s2"
+	"github.com/twpayne/go-geom"
+	"github.com/twpayne/go-geom/encoding/geojson"
 )
 
 var (
@@ -1171,6 +1174,116 @@ func (d *DInterval) Format(buf *bytes.Buffer, f FmtFlags) {
 // Size implements the Datum interface.
 func (d *DInterval) Size() (uintptr, bool) {
 	return unsafe.Sizeof(*d), false
+}
+
+// DGeography is the geography Datum.
+type DGeography struct {
+	JSON   string
+	Point  s2.Point
+	CellID s2.CellID
+}
+
+func ParseDGeography(s string) (*DGeography, error) {
+	var g geom.T
+	if err := geojson.Unmarshal([]byte(s), &g); err != nil {
+		return nil, err
+	}
+
+	// Re-encode to ensure consistent formatting.
+	b, err := geojson.Marshal(g)
+	if err != nil {
+		return nil, err
+	}
+	d := DGeography{
+		JSON: string(b),
+	}
+
+	switch g := g.(type) {
+	case *geom.Point:
+		c := g.Coords()
+		if len(c) != 2 {
+			return nil, fmt.Errorf("expected 2 points in coordinates")
+		}
+		ll := s2.LatLngFromDegrees(c[0], c[1])
+		d.Point = s2.PointFromLatLng(ll)
+		d.CellID = s2.CellIDFromLatLng(ll)
+	default:
+		// TODO(mjibson): don't use package type name in error
+		return nil, fmt.Errorf("cannot use %T as a geography", g)
+	}
+	return &d, nil
+}
+
+func (d DGeography) AttachCellID(id s2.CellID) *DGeography {
+	v := d
+	v.CellID = id
+	return &v
+}
+
+// ReturnType implements the TypedExpr interface.
+func (d *DGeography) ReturnType() Datum {
+	return TypeGeography
+}
+
+// Type implements the Datum interface.
+func (*DGeography) Type() string {
+	return "geography"
+}
+
+// TypeEqual implements the Datum interface.
+func (d *DGeography) TypeEqual(other Datum) bool {
+	_, ok := other.(*DGeography)
+	return ok
+}
+
+// Compare implements the Datum interface.
+func (d *DGeography) Compare(other Datum) int {
+	if other == DNull {
+		// NULL is less than any non-NULL value.
+		return 1
+	}
+	panic(d.Type() + ".Compare not supported")
+}
+
+// HasPrev implements the Datum interface.
+func (*DGeography) HasPrev() bool {
+	return false
+}
+
+// Prev implements the Datum interface.
+func (d *DGeography) Prev() Datum {
+	panic(d.Type() + ".Prev() not supported")
+}
+
+// HasNext implements the Datum interface.
+func (d *DGeography) HasNext() bool {
+	return false
+}
+
+// Next implements the Datum interface.
+func (d *DGeography) Next() Datum {
+	panic(d.Type() + ".Next() not supported")
+}
+
+// IsMax implements the Datum interface.
+func (d *DGeography) IsMax() bool {
+	return d.CellID.ChildEnd() == d.CellID
+}
+
+// IsMin implements the Datum interface.
+func (d *DGeography) IsMin() bool {
+	return d.CellID.ChildBegin() == d.CellID
+}
+
+// Format implements the NodeFormatter interface.
+func (d *DGeography) Format(buf *bytes.Buffer, f FmtFlags) {
+	buf.WriteString(d.CellID.String() + ": ")
+	encodeSQLString(buf, d.JSON)
+}
+
+func (d *DGeography) Size() (uintptr, bool) {
+	// TODO(mjibson): make sure this is accurate
+	return uintptr(len(d.JSON)), true
 }
 
 // DTuple is the tuple Datum.

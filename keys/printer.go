@@ -595,10 +595,9 @@ func MassagePrettyPrintedSpanForTest(span string, dirs []encoding.Direction) str
 		fmt.Sscanf(span[i:], "%d", &d)
 		if (dirs != nil) && (d != -789) {
 			// We've managed to consume an int.
-			dir := dirs[colIdx]
 			i += len(strconv.Itoa(d)) - 1
 			x := d
-			if dir == encoding.Descending {
+			if len(dirs) > colIdx && dirs[colIdx] == encoding.Descending {
 				x = ^x
 			}
 			r += strconv.Itoa(x)

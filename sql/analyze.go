@@ -1447,6 +1447,8 @@ func simplifyComparisonExpr(n *parser.ComparisonExpr) (parser.TypedExpr, bool) {
 			}
 			// TODO(pmattis): Support parser.DBytes?
 		}
+	} else if isGeoFunc(left) && isDatum(right) && n.Operator == parser.LT {
+		return n, true
 	}
 	return parser.MakeDBool(true), false
 }
@@ -1531,14 +1533,14 @@ func remove(a parser.DTuple, i int) parser.DTuple {
 	return r
 }
 
-func isDatum(e parser.TypedExpr) bool {
+func isDatum(e parser.Expr) bool {
 	_, ok := e.(parser.Datum)
 	return ok
 }
 
 // isVar returns true if the expression is a qvalue or a tuple composed of
 // qvalues.
-func isVar(e parser.TypedExpr) bool {
+func isVar(e parser.Expr) bool {
 	switch t := e.(type) {
 	case *qvalue, *parser.IndexedVar:
 		return true
@@ -1550,6 +1552,18 @@ func isVar(e parser.TypedExpr) bool {
 			}
 		}
 		return true
+	}
+
+	return false
+}
+
+func isGeoFunc(e parser.Expr) bool {
+	switch t := e.(type) {
+	case *parser.FuncExpr:
+		switch strings.ToUpper(t.Name.String()) {
+		case "ST_DISTANCE":
+			return isVar(t.Exprs[0]) && isDatum(t.Exprs[1])
+		}
 	}
 
 	return false

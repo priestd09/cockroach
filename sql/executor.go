@@ -1348,6 +1348,7 @@ func checkResultDatum(datum parser.Datum) error {
 	case *parser.DTimestamp:
 	case *parser.DTimestampTZ:
 	case *parser.DInterval:
+	case *parser.DGeography:
 	case *parser.DPlaceholder:
 		return fmt.Errorf("could not determine data type of %s %s", datum.Type(), datum)
 	default:

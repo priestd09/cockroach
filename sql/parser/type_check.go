@@ -47,6 +47,8 @@ var (
 	TypeInterval Datum = &DInterval{}
 	// TypeTuple is the type of a DTuple.
 	TypeTuple Datum = &DTuple{}
+	// TypeGeography is the type of a DGeography.
+	TypeGeography Datum = &DGeography{}
 )
 
 // SemaContext defines the context in which to perform semantic analysis on an
@@ -643,6 +645,10 @@ func (d *DTimestampTZ) TypeCheck(_ *SemaContext, desired Datum) (TypedExpr, erro
 // TypeCheck implements the Expr interface. It is implemented as an idempotent
 // identity function for Datum.
 func (d *DInterval) TypeCheck(_ *SemaContext, desired Datum) (TypedExpr, error) { return d, nil }
+
+// TypeCheck implements the Expr interface. It is implemented as an idempotent
+// identity function for Datum.
+func (d *DGeography) TypeCheck(_ *SemaContext, desired Datum) (TypedExpr, error) { return d, nil }
 
 // TypeCheck implements the Expr interface. It is implemented as an idempotent
 // identity function for Datum.

@@ -1225,6 +1225,70 @@ func EncodeDurationValue(appendTo []byte, colID uint32, d duration.Duration) []b
 	return EncodeNonsortingVarint(appendTo, d.Nanos)
 }
 
+func EncodeGeographyAscending(appendTo []byte, cellid uint64, geojson string) []byte {
+	/*
+		b := make([]byte, 0, 8)
+		b = EncodeUint64Ascending(b, uint64(cellid))
+		appendTo = EncodeBytesAscending(appendTo, b[:])
+		//*/
+	appendTo = EncodeUvarintAscending(appendTo, cellid)
+	return EncodeBytesAscending(appendTo, []byte(geojson))
+}
+
+func EncodeGeographyDescending(appendTo []byte, cellid uint64, geojson string) []byte {
+	/*
+		b := make([]byte, 0, 8)
+		b = EncodeUint64Descending(b, uint64(cellid))
+		appendTo = EncodeBytesAscending(appendTo, b[:])
+		//*/
+	appendTo = EncodeUvarintDescending(appendTo, cellid)
+	return EncodeBytesDescending(appendTo, []byte(geojson))
+}
+
+func DecodeGeographyAscending(b []byte) ([]byte, uint64, string, error) {
+	b, id, err := DecodeUvarintAscending(b)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	b, r, err := DecodeBytesAscending(b, nil)
+	return b, id, string(r), err
+
+	/*
+		b, r, err := DecodeBytesAscending(b, nil)
+		if err != nil {
+			return nil, 0, "", err
+		}
+		_, id, err := DecodeUint64Ascending(r)
+		if err != nil {
+			return nil, 0, "", err
+		}
+		b, r, err = DecodeBytesAscending(b, nil)
+		return b, id, string(r), err
+		//*/
+}
+
+func DecodeGeographyDescending(b []byte) ([]byte, uint64, string, error) {
+	b, id, err := DecodeUvarintDescending(b)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	b, r, err := DecodeBytesDescending(b, nil)
+	return b, id, string(r), err
+
+	/*
+		b, r, err := DecodeBytesAscending(b, nil)
+		if err != nil {
+			return nil, 0, "", err
+		}
+		_, id, err := DecodeUint64Descending(r)
+		if err != nil {
+			return nil, 0, "", err
+		}
+		b, r, err = DecodeBytesDescending(b, nil)
+		return b, id, string(r), err
+		//*/
+}
+
 // DecodeValueTag decodes a value encoded by encodeValueTag, used as a prefix in
 // each of the other EncodeFooValue methods.
 //

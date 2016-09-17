@@ -1,0 +1,30 @@
+statement ok
+CREATE TABLE t (a GEOGRAPHY, b GEOGRAPHY)
+
+statement ok
+INSERT INTO t (a) VALUES ('{"type":"Point","coordinates":[-73.992920,40.737667]}')
+
+# Make sure we can round-trip. The '0' should be removed from this one.
+query T
+SELECT ST_AsGeoJSON(a) FROM t
+----
+{"type":"Point","coordinates":[-73.99292,40.737667]}
+
+statement error ST_GeogFromGeoJSON: cannot use \*geom\.MultiLineString as a geography
+SELECT '{"type":"MultiLineString","coordinates":[[[1,2],[3,4],[5,6],[1,2]]]}'
+
+statement ok
+UPDATE t SET b = '{"type":"Point","coordinates":[-70.41588306427002, 19.755536248330497]}'
+
+statement ok
+INSERT INTO t VALUES ('{"type":"Point","coordinates":[0,-90]}'), ST_GeogFromGeoJSON('{"type":"Point","coordinates":[0,90]}')
+
+statement ok
+INSERT INTO t VALUES ('{"type":"Point","coordinates":[0,0]}'), ST_GeogFromGeoJSON('{"type":"Point","coordinates":[0,90]}')
+
+query R
+select ST_DISTANCE(a, b) FROM t
+----
+0.12718468251892862
+3.141592653589793
+1.5707963267948966

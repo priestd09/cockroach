@@ -95,6 +95,7 @@ var keywords = map[string]int{
 	"FOREIGN":           FOREIGN,
 	"FROM":              FROM,
 	"FULL":              FULL,
+	"GEOGRAPHY":         GEOGRAPHY,
 	"GRANT":             GRANT,
 	"GRANTS":            GRANTS,
 	"GREATEST":          GREATEST,
