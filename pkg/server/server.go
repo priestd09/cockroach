@@ -25,6 +25,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"plugin"
 	"strings"
 	"sync"
 	"time"
@@ -43,6 +44,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/internal/client"
 	"github.com/cockroachdb/cockroach/pkg/kv"
 	"github.com/cockroachdb/cockroach/pkg/migrations"
+	"github.com/cockroachdb/cockroach/pkg/plugins"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/rpc"
 	"github.com/cockroachdb/cockroach/pkg/server/serverpb"
@@ -470,6 +472,20 @@ func (s *Server) Start(ctx context.Context) error {
 	var serveOnMux sync.Once
 	m := cmux.New(ln)
 	pgL := m.Match(pgwire.Match)
+
+	plug, err := plugin.Open("plugin.so")
+	if err == nil {
+		sym, err := plug.Lookup("Match")
+		if err != nil {
+			panic(err)
+		}
+		match := sym.(*plugins.Matcher)
+		matchL := m.Match(match.Matcher)
+		s.stopper.RunWorker(func() {
+			netutil.FatalIfUnexpected(match.Serve(matchL, s.db))
+		})
+	}
+
 	anyL := m.Match(cmux.Any())
 
 	httpLn, err := net.Listen("tcp", s.cfg.HTTPAddr)

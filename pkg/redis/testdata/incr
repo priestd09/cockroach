@@ -1,0 +1,12 @@
+redis> SET mykey "10"
+OK
+redis> INCR mykey
+(integer) 11
+redis> GET mykey
+"11"
+redis> APPEND mykey a
+(integer) 3
+redis> INCR mykey
+(error) ERR value is not an integer or out of range
+redis> INCR other
+(integer) 1

@@ -1,0 +1,9 @@
+redis> SADD myset "Hello"
+(integer) 1
+redis> SADD myset "World"
+(integer) 1
+redis> SADD myset "World"
+(integer) 0
+redis> SMEMBERS myset
+1) "Hello"
+2) "World"
