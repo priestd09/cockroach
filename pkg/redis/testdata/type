@@ -1,0 +1,16 @@
+redis> SET key1 "value"
+OK
+redis> LPUSH key2 "value"
+(integer) 1
+#redis> SADD key3 "value"
+#(integer) 1
+redis> TYPE key1
+string
+redis> TYPE key2
+list
+#redis> TYPE key3
+#set
+redis> TYPE other
+none
+
+# TODO(mjibson): enable set tests

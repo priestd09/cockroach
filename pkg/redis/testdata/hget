@@ -1,0 +1,6 @@
+redis> HSET myhash field1 "foo"
+(integer) 1
+redis> HGET myhash field1
+"foo"
+redis> HGET myhash field2
+(nil)

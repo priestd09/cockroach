@@ -1,0 +1,14 @@
+redis> EXISTS mykey
+(integer) 0
+redis> APPEND mykey "Hello"
+(integer) 5
+redis> APPEND mykey "World"
+(integer) 10
+redis> GET mykey
+"HelloWorld"
+redis> INCR a
+(integer) 1
+redis> APPEND a "test"
+(integer) 5
+redis> GET a
+"1test"

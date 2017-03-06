@@ -1,0 +1,6 @@
+redis> SETNX mykey "Hello"
+(integer) 1
+redis> SETNX mykey "World"
+(integer) 0
+redis> GET mykey
+"Hello"

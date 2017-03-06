@@ -1,0 +1,12 @@
+redis> SET mykey "Hello"
+OK
+redis> RENAME mykey myotherkey
+OK
+redis> GET myotherkey
+"Hello"
+
+# test renaming of a non-string
+redis> RPUSH mylist 1
+(integer) 1
+redis> RENAME mylist b
+OK

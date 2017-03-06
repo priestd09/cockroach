@@ -1,0 +1,104 @@
+redis> SET myotherkey a
+OK
+redis> RPUSH myotherkey a
+(error) WRONGTYPE Operation against a key holding the wrong kind of value
+redis> RPUSH mylist one
+(integer) 1
+redis> RPUSH mylist two
+(integer) 2
+redis> RPUSH mylist three
+(integer) 3
+redis> LRANGE mylist 0 0
+1) "one"
+redis> LRANGE mylist -3 2
+1) "one"
+2) "two"
+3) "three"
+redis> LRANGE mylist -100 100
+1) "one"
+2) "two"
+3) "three"
+redis> LRANGE mylist 5 10
+(empty list or set)
+redis> GET mylist
+(error) WRONGTYPE Operation against a key holding the wrong kind of value
+redis> SET key1 hi
+OK
+redis> FLUSHALL
+OK
+redis> GET key1
+(nil)
+redis> LPUSH mylist World
+(integer) 1
+redis> LPUSH mylist Hello
+(integer) 2
+redis> LINDEX mylist 0
+"Hello"
+redis> LINDEX mylist -1
+"World"
+redis> LINDEX mylist 3
+(nil)
+redis> LLEN mylist
+(integer) 2
+redis> FLUSHALL
+OK
+redis> RPUSH mylist one
+(integer) 1
+redis> RPUSH mylist two
+(integer) 2
+redis> RPUSH mylist three
+(integer) 3
+redis> LPOP mylist
+"one"
+redis> LRANGE mylist 0 -1
+1) "two"
+2) "three"
+redis> FLUSHALL
+OK
+redis> LPUSH mylist World
+(integer) 1
+redis> LPUSHX mylist Hello
+(integer) 2
+redis> LPUSHX myotherlist Hello
+(integer) 0
+redis> LRANGE mylist 0 -1
+1) "Hello"
+2) "World"
+redis> LRANGE myotherlist 0 -1
+(empty list or set)
+redis> FLUSHALL
+OK
+redis> RPUSH mylist Hello
+(integer) 1
+redis> RPUSHX mylist World
+(integer) 2
+redis> RPUSHX myotherlist World
+(integer) 0
+redis> LRANGE mylist 0 -1
+1) "Hello"
+2) "World"
+redis> LRANGE myotherlist 0 -1
+(empty list or set)
+redis> FLUSHALL
+OK
+redis> RPUSH mylist one
+(integer) 1
+redis> RPUSH mylist two
+(integer) 2
+redis> RPUSH mylist three
+(integer) 3
+redis> RPOPLPUSH mylist myotherlist
+"three"
+redis> LRANGE mylist 0 -1
+1) "one"
+2) "two"
+redis> LRANGE myotherlist 0 -1
+1) "three"
+redis> RPUSH mylist three
+(integer) 3
+redis> RPOPLPUSH mylist mylist
+"three"
+redis> LRANGE mylist 0 -1
+1) "three"
+2) "one"
+3) "two"
