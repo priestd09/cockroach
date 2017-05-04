@@ -619,7 +619,17 @@ func (e *Executor) execRequest(
 	// If the Executor wants config updates to be blocked, then block them.
 	defer e.blockConfigUpdatesMaybe()()
 
+Loop:
 	for len(stmts) > 0 {
+		select {
+		case <-session.Ctx().Done():
+			res.ResultList = append(res.ResultList, Result{
+				Err: session.Ctx().Err(),
+			})
+			break Loop
+		default:
+		}
+
 		// Each iteration consumes a transaction's worth of statements.
 
 		inTxn := txnState.State != NoTxn

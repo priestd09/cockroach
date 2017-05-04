@@ -1601,3 +1601,50 @@ func TestPGWireAuth(t *testing.T) {
 		}
 	})
 }
+
+func TestCancel(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	defer s.Stopper().Stop(context.TODO())
+
+	// Authenticate as root with certificate and expect success.
+	rootPgURL, cleanupFn := sqlutils.PGUrl(
+		t, s.ServingAddr(), t.Name(), url.User(security.RootUser))
+	defer cleanupFn()
+
+	// Create server.TestUser with a unicode password and a user with a
+	// unicode username for later tests.
+	// Only root is allowed to create users.
+	db, err := gosql.Open("postgres", rootPgURL.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	ctx, _ := context.WithTimeout(context.Background(), time.Second*2)
+	rows, err := db.QueryContext(ctx, "SELECT 1; SELECT crdb_internal.sleep(5); SELECT 2; select crdb_internal.sleep(5)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for {
+		for rows.Next() {
+			fmt.Println(" ROW")
+			var v interface{}
+			if err := rows.Scan(&v); err != nil {
+				t.Fatal(err)
+			}
+			fmt.Printf("%T: %v\n", v, v)
+		}
+		fmt.Println("CHECKING NEXT SET")
+		if !rows.NextResultSet() {
+			fmt.Println("BREAKING")
+			break
+		}
+		fmt.Println("NEXT SEt")
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+}

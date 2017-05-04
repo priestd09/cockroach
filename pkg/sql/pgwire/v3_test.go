@@ -106,6 +106,8 @@ func testMaliciousInput(t *testing.T, data []byte) {
 		context.Background(),
 		func() bool { return false }, /* draining */
 		mon.BoundAccount{},
+		0, /* key */
+		0, /* secret */
 	)
 }
 

@@ -37,9 +37,9 @@ func (s *Server) OverwriteCancelMap() []context.CancelFunc {
 	defer s.mu.Unlock()
 	cancel := func() {}
 	originalCancels := make([]context.CancelFunc, 0, len(s.mu.connCancelMap))
-	for done, originalCancel := range s.mu.connCancelMap {
-		s.mu.connCancelMap[done] = cancel
-		originalCancels = append(originalCancels, originalCancel)
+	for _, originalCancel := range s.mu.connCancelMap {
+		originalCancels = append(originalCancels, originalCancel.cancel)
+		originalCancel.cancel = cancel
 	}
 	return originalCancels
 }

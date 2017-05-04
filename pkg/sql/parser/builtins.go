@@ -1620,6 +1620,29 @@ var Builtins = map[string][]Builtin{
 			Info:     "This function is used only by CockroachDB's developers for testing purposes.",
 		},
 	},
+
+	"crdb_internal.sleep": {
+		Builtin{
+			Types:      ArgTypes{{"seconds", TypeFloat}},
+			ReturnType: fixedReturnType(TypeNull),
+			impure:     true,
+			privileged: true,
+			fn: func(ctx *EvalContext, args Datums) (Datum, error) {
+				duration := time.Duration(float64(time.Second) * float64(*args[0].(*DFloat)))
+				t := time.NewTimer(duration)
+				start := time.Now()
+				select {
+				case <-ctx.Ctx().Done():
+					fmt.Println("SLEEP CANCEL AFTER", time.Since(start))
+					t.Stop()
+				case <-t.C:
+				}
+				return DNull, nil
+			},
+			category: categorySystemInfo,
+			Info:     "This function is used only by CockroachDB's developers for testing purposes.",
+		},
+	},
 }
 
 var substringImpls = []Builtin{
