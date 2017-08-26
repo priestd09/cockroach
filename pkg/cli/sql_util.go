@@ -175,33 +175,6 @@ func (c *sqlConn) checkServerMetadata() error {
 	return nil
 }
 
-// getServerValue retrieves the first driverValue returned by the
-// given sql query. If the query fails or does not return a single
-// column, `false` is returned in the second result.
-func (c *sqlConn) getServerValue(what, sql string) (driver.Value, bool) {
-	var dbVals [1]driver.Value
-
-	rows, err := c.Query(sql, nil)
-	if err != nil {
-		fmt.Fprintf(stderr, "error retrieving the %s: %v\n", what, err)
-		return nil, false
-	}
-	defer func() { _ = rows.Close() }()
-
-	if len(rows.Columns()) == 0 {
-		fmt.Fprintf(stderr, "cannot get the %s\n", what)
-		return nil, false
-	}
-
-	err = rows.Next(dbVals[:])
-	if err != nil {
-		fmt.Fprintf(stderr, "invalid %s: %v\n", what, err)
-		return nil, false
-	}
-
-	return dbVals[0], true
-}
-
 // ExecTxn runs fn inside a transaction and retries it as needed.
 // On non-retryable failures, the transaction is aborted and rolled
 // back; on success, the transaction is committed.
@@ -379,42 +352,50 @@ func makeSQLConn(url string) *sqlConn {
 	}
 }
 
-// getPasswordAndMakeSQLClient prompts for a password if running in secure mode
-// and no certificates have been supplied.
-// Attempting to use security.RootUser without valid certificates will return an error.
-func getPasswordAndMakeSQLClient() (*sqlConn, error) {
+func getSQLURL() (string, error) {
 	if len(sqlConnURL) != 0 {
-		return makeSQLConn(sqlConnURL), nil
+		return sqlConnURL, nil
 	}
 	var user *url.Userinfo
 	if !baseCfg.Insecure && !baseCfg.ClientHasValidCerts(sqlConnUser) {
 		if sqlConnUser == security.RootUser {
-			return nil, errors.Errorf("connections with user %s must use a client certificate", security.RootUser)
+			return "", errors.Errorf("connections with user %s must use a client certificate", security.RootUser)
 		}
 
 		pwd, err := security.PromptForPassword()
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 
 		user = url.UserPassword(sqlConnUser, pwd)
 	} else {
 		user = url.User(sqlConnUser)
 	}
-	return makeSQLClient(user)
+	return makeSQLClientURL(user)
 }
 
-func makeSQLClient(user *url.Userinfo) (*sqlConn, error) {
+// getPasswordAndMakeSQLClient prompts for a password if running in secure mode
+// and no certificates have been supplied.
+// Attempting to use security.RootUser without valid certificates will return an error.
+func getPasswordAndMakeSQLClient() (*sqlConn, error) {
+	url, err := getSQLURL()
+	if err != nil {
+		return nil, err
+	}
+	return makeSQLConn(url), nil
+}
+
+func makeSQLClientURL(user *url.Userinfo) (string, error) {
 	sqlURL := sqlConnURL
 	if len(sqlConnURL) == 0 {
 		u, err := sqlCtx.PGURL(user)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		u.Path = sqlConnDBName
 		sqlURL = u.String()
 	}
-	return makeSQLConn(sqlURL), nil
+	return sqlURL, nil
 }
 
 type queryFunc func(conn *sqlConn) (*sqlRows, error)

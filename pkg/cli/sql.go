@@ -60,7 +60,7 @@ Open a sql shell running against a cockroach database.
 // cliState defines the current state of the CLI during
 // command-line processing.
 type cliState struct {
-	conn *sqlConn
+	conn *pgconn
 	// ins is used to read lines if isInteractive is true.
 	ins *readline.Instance
 	// buf is used to read lines if isInteractive is false.
@@ -526,11 +526,11 @@ func (c *cliState) refreshDatabaseName() (string, bool) {
 		return "", false
 	}
 
-	dbName := formatVal(dbVal.(string),
+	dbName := formatVal(dbVal,
 		false /* showPrintableUnicode */, false /* shownewLinesAndTabs */)
 
 	// Preserve the current database name in case of reconnects.
-	c.conn.dbName = dbName
+	c.conn.config.Database = dbName
 
 	return dbName, true
 }
@@ -608,7 +608,7 @@ func (c *cliState) doStart(nextState cliStateEnum) cliStateEnum {
 	c.partialLines = []string{}
 
 	if isInteractive {
-		c.promptPrefix, c.fullPrompt, c.continuePrompt = preparePrompts(c.conn.url)
+		c.promptPrefix, c.fullPrompt, c.continuePrompt = preparePrompts(c.conn.uri)
 
 		// We only enable history management when the terminal is actually
 		// interactive. This saves on memory when e.g. piping a large SQL
@@ -968,7 +968,7 @@ func (c *cliState) doRunStatement(nextState cliStateEnum) cliStateEnum {
 	c.lastKnownTxnStatus = " ?"
 
 	// Now run the statement/query.
-	c.exitErr = runQueryAndFormatResults(c.conn, os.Stdout, makeQuery(c.concatLines))
+	c.exitErr = c.conn.Run(os.Stdout, c.concatLines)
 	if c.exitErr != nil {
 		fmt.Fprintln(stderr, c.exitErr)
 		maybeShowErrorDetails(stderr, c.exitErr, false)
@@ -1018,7 +1018,7 @@ func (c *cliState) doDecidePath() cliStateEnum {
 
 // runInteractive runs the SQL client interactively, presenting
 // a prompt to the user for each statement.
-func runInteractive(conn *sqlConn, config *readline.Config) (exitErr error) {
+func runInteractive(conn *pgconn, config *readline.Config) (exitErr error) {
 	c := cliState{conn: conn}
 
 	state := cliStart
@@ -1096,9 +1096,9 @@ func runInteractive(conn *sqlConn, config *readline.Config) (exitErr error) {
 
 // runOneStatement executes one statement and terminates
 // on error.
-func runStatements(conn *sqlConn, stmts []string) error {
+func runStatements(conn *pgconn, stmts []string) error {
 	for _, stmt := range stmts {
-		if err := runQueryAndFormatResults(conn, os.Stdout, makeQuery(stmt)); err != nil {
+		if err := conn.Run(os.Stdout, stmt); err != nil {
 			// Expand the details and hints so that they are printed to the user.
 			var buf bytes.Buffer
 			buf.WriteString(err.Error())
@@ -1119,20 +1119,18 @@ func runTerm(cmd *cobra.Command, args []string) error {
 		fmt.Print(infoMessage)
 	}
 
-	conn, err := getPasswordAndMakeSQLClient()
+	url, err := getSQLURL()
+	if err != nil {
+		return err
+	}
+	conn, err := newPGConn(url)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	// Open the connection to make sure everything is OK before running any
-	// statements. Performs authentication.
-	if err := conn.ensureConn(); err != nil {
-		return err
-	}
-
 	if !sqlCtx.unsafeUpdates {
-		if err := conn.Exec("SET sql_safe_updates = TRUE", nil); err != nil {
+		if err := conn.Exec("SET sql_safe_updates = TRUE"); err != nil {
 			return err
 		}
 	}

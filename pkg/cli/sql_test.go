@@ -35,7 +35,10 @@ func TestSQLLex(t *testing.T) {
 	pgurl, cleanup := sqlutils.PGUrl(t, c.ServingAddr(), t.Name(), url.User(security.RootUser))
 	defer cleanup()
 
-	conn := makeSQLConn(pgurl.String())
+	conn, err := newPGConn(pgurl.String())
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer conn.Close()
 
 	tests := []struct {
