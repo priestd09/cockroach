@@ -526,7 +526,7 @@ func (c *cliState) refreshDatabaseName() (string, bool) {
 		return "", false
 	}
 
-	dbName := formatVal(dbVal.(string),
+	dbName := formatVal(dbVal,
 		false /* showPrintableUnicode */, false /* shownewLinesAndTabs */)
 
 	// Preserve the current database name in case of reconnects.
@@ -968,7 +968,7 @@ func (c *cliState) doRunStatement(nextState cliStateEnum) cliStateEnum {
 	c.lastKnownTxnStatus = " ?"
 
 	// Now run the statement/query.
-	c.exitErr = runQueryAndFormatResults(c.conn, os.Stdout, makeQuery(c.concatLines))
+	c.exitErr = runQueryAndFormatResults(c.conn, os.Stdout, c.concatLines)
 	if c.exitErr != nil {
 		fmt.Fprintln(stderr, c.exitErr)
 		maybeShowErrorDetails(stderr, c.exitErr, false)
@@ -1098,7 +1098,7 @@ func runInteractive(conn *sqlConn, config *readline.Config) (exitErr error) {
 // on error.
 func runStatements(conn *sqlConn, stmts []string) error {
 	for _, stmt := range stmts {
-		if err := runQueryAndFormatResults(conn, os.Stdout, makeQuery(stmt)); err != nil {
+		if err := runQueryAndFormatResults(conn, os.Stdout, stmt); err != nil {
 			// Expand the details and hints so that they are printed to the user.
 			var buf bytes.Buffer
 			buf.WriteString(err.Error())

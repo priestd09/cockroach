@@ -16,7 +16,6 @@ package cli
 
 import (
 	"bytes"
-	"database/sql/driver"
 	"fmt"
 	"io"
 	"net/url"
@@ -269,7 +268,10 @@ func TestDumpBytes(t *testing.T) {
 	url, cleanup := sqlutils.PGUrl(t, c.ServingAddr(), t.Name(), url.User(security.RootUser))
 	defer cleanup()
 
-	conn := makeSQLConn(url.String())
+	conn, err := makeSQLConn(url.String())
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer conn.Close()
 
 	if err := conn.Exec(`
@@ -281,7 +283,7 @@ func TestDumpBytes(t *testing.T) {
 	}
 
 	for i := int64(0); i < 256; i++ {
-		if err := conn.Exec("INSERT INTO t VALUES ($1)", []driver.Value{[]byte{byte(i)}}); err != nil {
+		if err := conn.Exec("INSERT INTO t VALUES ($1)", []byte{byte(i)}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -335,7 +337,10 @@ func TestDumpRandom(t *testing.T) {
 	url, cleanup := sqlutils.PGUrl(t, c.ServingAddr(), t.Name(), url.User(security.RootUser))
 	defer cleanup()
 
-	conn := makeSQLConn(url.String())
+	conn, err := makeSQLConn(url.String())
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer conn.Close()
 
 	if err := conn.Exec(`
@@ -367,7 +372,7 @@ func TestDumpRandom(t *testing.T) {
 		if err := conn.Exec(`DELETE FROM d.t`, nil); err != nil {
 			t.Fatal(err)
 		}
-		var generatedRows [][]driver.Value
+		var generatedRows [][]interface{}
 		count := rnd.Int63n(500)
 		t.Logf("random iteration %v: %v rows", iteration, count)
 		for _i := int64(0); _i < count; _i++ {
@@ -402,7 +407,7 @@ func TestDumpRandom(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			vals := []driver.Value{
+			vals := []interface{}{
 				_i,
 				i,
 				f,
@@ -414,7 +419,7 @@ func TestDumpRandom(t *testing.T) {
 				string(s),
 				b,
 			}
-			if err := conn.Exec("INSERT INTO d.t VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)", vals); err != nil {
+			if err := conn.Exec("INSERT INTO d.t VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)", vals...); err != nil {
 				t.Fatal(err)
 			}
 			generatedRows = append(generatedRows, vals[1:])
@@ -426,14 +431,13 @@ func TestDumpRandom(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() {
-				if err := nrows.Close(); err != nil {
-					t.Fatal(err)
-				}
-			}()
+			defer nrows.Close()
 			for gi, generatedRow := range generatedRows {
-				fetched := make([]driver.Value, len(nrows.Columns()))
-				if err := nrows.Next(fetched); err != nil {
+				if !nrows.Next() {
+					t.Fatal("expected more rows")
+				}
+				fetched, err := nrows.Values()
+				if err != nil {
 					t.Fatal(err)
 				}
 

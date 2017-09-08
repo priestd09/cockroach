@@ -16,7 +16,6 @@ package cli
 
 import (
 	"bytes"
-	"database/sql/driver"
 	"fmt"
 	"io"
 	"os"
@@ -152,11 +151,9 @@ func getDumpMetadata(
 	conn *sqlConn, dbName string, tableNames []string, asOf string,
 ) (mds []tableMetadata, clusterTS string, err error) {
 	if asOf == "" {
-		vals, err := conn.QueryRow("SELECT cluster_logical_timestamp()", nil)
-		if err != nil {
+		if err := conn.QueryRow("SELECT cluster_logical_timestamp()").Scan(&clusterTS); err != nil {
 			return nil, "", err
 		}
-		clusterTS = string(vals[0].([]byte))
 	} else {
 		// Validate the timestamp. This prevents SQL injection.
 		if _, err := parser.ParseDTimestamp(asOf, time.Nanosecond); err != nil {
@@ -191,31 +188,19 @@ func getTableNames(conn *sqlConn, dbName string, ts string) (tableNames []string
 		FROM "".information_schema.tables
 		AS OF SYSTEM TIME '%s'
 		WHERE TABLE_SCHEMA = $1
-		`, ts), []driver.Value{dbName})
+		`, ts), dbName)
 	if err != nil {
 		return nil, err
 	}
 
-	vals := make([]driver.Value, 1)
-	for {
-		if err := rows.Next(vals); err == io.EOF {
-			break
-		} else if err != nil {
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
 			return nil, err
-		}
-		nameI := vals[0]
-		name, ok := nameI.(string)
-		if !ok {
-			return nil, fmt.Errorf("unexpected value: %T", nameI)
 		}
 		tableNames = append(tableNames, name)
 	}
-
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-
-	return tableNames, nil
+	return tableNames, rows.Err()
 }
 
 func getMetadataForTable(
@@ -224,20 +209,19 @@ func getMetadataForTable(
 	name := &parser.TableName{DatabaseName: parser.Name(dbName), TableName: parser.Name(tableName)}
 
 	// Fetch table ID.
-	vals, err := conn.QueryRow(fmt.Sprintf(`
+	var tableID int64
+	if err := conn.QueryRow(fmt.Sprintf(`
 		SELECT table_id
 		FROM %s.crdb_internal.tables
 		AS OF SYSTEM TIME '%s'
 		WHERE DATABASE_NAME = $1
 			AND NAME = $2
-		`, parser.Name(dbName).String(), ts), []driver.Value{dbName, tableName})
-	if err != nil {
+		`, parser.Name(dbName).String(), ts), dbName, tableName).Scan(&tableID); err != nil {
 		if err == io.EOF {
 			return tableMetadata{}, errors.Errorf("relation %s does not exist", name)
 		}
 		return tableMetadata{}, err
 	}
-	tableID := vals[0].(int64)
 
 	// Fetch column types.
 	rows, err := conn.Query(fmt.Sprintf(`
@@ -246,27 +230,16 @@ func getMetadataForTable(
 		AS OF SYSTEM TIME '%s'
 		WHERE TABLE_SCHEMA = $1
 			AND TABLE_NAME = $2
-		`, ts), []driver.Value{dbName, tableName})
+		`, ts), dbName, tableName)
 	if err != nil {
 		return tableMetadata{}, err
 	}
-	vals = make([]driver.Value, 2)
 	coltypes := make(map[string]string)
 	var colnames bytes.Buffer
-	for {
-		if err := rows.Next(vals); err == io.EOF {
-			break
-		} else if err != nil {
+	for rows.Next() {
+		var name, typ string
+		if err := rows.Scan(&name, &typ); err != nil {
 			return tableMetadata{}, err
-		}
-		nameI, typI := vals[0], vals[1]
-		name, ok := nameI.(string)
-		if !ok {
-			return tableMetadata{}, fmt.Errorf("unexpected value: %T", nameI)
-		}
-		typ, ok := typI.(string)
-		if !ok {
-			return tableMetadata{}, fmt.Errorf("unexpected value: %T", typI)
 		}
 		coltypes[name] = typ
 		if colnames.Len() > 0 {
@@ -274,7 +247,7 @@ func getMetadataForTable(
 		}
 		parser.FormatNode(&colnames, parser.FmtSimple, parser.Name(name))
 	}
-	if err := rows.Close(); err != nil {
+	if err := rows.Err(); err != nil {
 		return tableMetadata{}, err
 	}
 
@@ -286,67 +259,60 @@ func getMetadataForTable(
 			AND TABLE_NAME = $2
 			AND CONSTRAINT_NAME = $3
 		ORDER BY ORDINAL_POSITION
-		`, ts), []driver.Value{dbName, tableName, sqlbase.PrimaryKeyIndexName})
+		`, ts), dbName, tableName, sqlbase.PrimaryKeyIndexName)
 	if err != nil {
 		return tableMetadata{}, err
 	}
-	vals = make([]driver.Value, 1)
 
 	var numIndexCols int
 	var idxColNames bytes.Buffer
 	// Find the primary index columns.
-	for {
-		if err := rows.Next(vals); err == io.EOF {
-			break
-		} else if err != nil {
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
 			return tableMetadata{}, err
 		}
-		name := vals[0].(string)
 		if idxColNames.Len() > 0 {
 			idxColNames.WriteString(", ")
 		}
 		parser.FormatNode(&idxColNames, parser.FmtSimple, parser.Name(name))
 		numIndexCols++
 	}
-	if err := rows.Close(); err != nil {
+	if err := rows.Err(); err != nil {
 		return tableMetadata{}, err
 	}
 
-	vals, err = conn.QueryRow(fmt.Sprintf(`
+	var create string
+	var descType bool
+	if err := conn.QueryRow(fmt.Sprintf(`
 		SELECT create_statement, descriptor_type = 'view'
 		FROM %s.crdb_internal.create_statements
 		AS OF SYSTEM TIME '%s'
 		WHERE descriptor_name = $1
 			AND database_name = $2
-		`, parser.Name(dbName).String(), ts), []driver.Value{tableName, dbName})
-	if err != nil {
+		`, parser.Name(dbName).String(), ts), tableName, dbName).Scan(&create, &descType); err != nil {
 		return tableMetadata{}, err
 	}
-	create := vals[0].(string)
-	descType := vals[1].(bool)
 
 	rows, err = conn.Query(fmt.Sprintf(`
 		SELECT dependson_id
 		FROM %s.crdb_internal.backward_dependencies
 		AS OF SYSTEM TIME '%s'
 		WHERE descriptor_id = $1
-		`, parser.Name(dbName).String(), ts), []driver.Value{tableID})
+		`, parser.Name(dbName).String(), ts), tableID)
 	if err != nil {
 		return tableMetadata{}, err
 	}
-	vals = make([]driver.Value, 1)
 
 	var refs []int64
-	for {
-		if err := rows.Next(vals); err == io.EOF {
-			break
-		} else if err != nil {
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
 			return tableMetadata{}, err
 		}
-		id := vals[0].(int64)
 		refs = append(refs, id)
 	}
-	if err := rows.Close(); err != nil {
+	if err := rows.Err(); err != nil {
 		return tableMetadata{}, err
 	}
 
@@ -408,7 +374,7 @@ func dumpTableData(w io.Writer, conn *sqlConn, clusterTS string, md tableMetadat
 	bs := sbuf.String()
 
 	// pk holds the last values of the fetched primary keys
-	var pk []driver.Value
+	var pk []interface{}
 	q := fmt.Sprintf(bs, "")
 	inserts := make([]string, 0, insertRows)
 	for {
@@ -416,15 +382,13 @@ func dumpTableData(w io.Writer, conn *sqlConn, clusterTS string, md tableMetadat
 		if err != nil {
 			return err
 		}
-		cols := rows.Columns()
+		cols := rows.FieldDescriptions()
 		pkcols := cols[:md.numIndexCols]
 		cols = cols[md.numIndexCols:]
 		i := 0
-		for {
-			vals := make([]driver.Value, len(cols)+len(pkcols))
-			if err := rows.Next(vals); err == io.EOF {
-				break
-			} else if err != nil {
+		for rows.Next() {
+			vals, err := rows.Values()
+			if err != nil {
 				return err
 			}
 			if pk == nil {
@@ -439,6 +403,7 @@ func dumpTableData(w io.Writer, conn *sqlConn, clusterTS string, md tableMetadat
 					ivals.WriteString(", ")
 				}
 				var d parser.Datum
+				ct := md.columnTypes[cols[si].Name]
 				switch t := sv.(type) {
 				case nil:
 					d = parser.DNull
@@ -451,7 +416,7 @@ func dumpTableData(w io.Writer, conn *sqlConn, clusterTS string, md tableMetadat
 				case string:
 					d = parser.NewDString(t)
 				case []byte:
-					switch ct := md.columnTypes[cols[si]]; ct {
+					switch ct {
 					case "INTERVAL":
 						d, err = parser.ParseDInterval(string(t))
 						if err != nil {
@@ -462,19 +427,18 @@ func dumpTableData(w io.Writer, conn *sqlConn, clusterTS string, md tableMetadat
 					default:
 						// STRING and DECIMAL types can have optional length
 						// suffixes, so only examine the prefix of the type.
-						if strings.HasPrefix(md.columnTypes[cols[si]], "STRING") {
+						if strings.HasPrefix(ct, "STRING") {
 							d = parser.NewDString(string(t))
-						} else if strings.HasPrefix(md.columnTypes[cols[si]], "DECIMAL") {
+						} else if strings.HasPrefix(ct, "DECIMAL") {
 							d, err = parser.ParseDDecimal(string(t))
 							if err != nil {
 								panic(err)
 							}
 						} else {
-							panic(errors.Errorf("unknown []byte type: %s, %v: %s", t, cols[si], md.columnTypes[cols[si]]))
+							panic(errors.Errorf("unknown []byte type: %s, %v: %s", t, cols[si], ct))
 						}
 					}
 				case time.Time:
-					ct := md.columnTypes[cols[si]]
 					switch ct {
 					case "DATE":
 						d = parser.NewDDateFromTime(t, time.UTC)
@@ -483,7 +447,7 @@ func dumpTableData(w io.Writer, conn *sqlConn, clusterTS string, md tableMetadat
 					case "TIMESTAMP WITH TIME ZONE":
 						d = parser.MakeDTimestampTZ(t, time.Nanosecond)
 					default:
-						panic(errors.Errorf("unknown timestamp type: %s, %v: %s", t, cols[si], md.columnTypes[cols[si]]))
+						panic(errors.Errorf("unknown timestamp type: %s, %v: %s", t, cols[si], ct))
 					}
 				default:
 					panic(errors.Errorf("unknown field type: %T (%s)", t, cols[si]))
@@ -499,13 +463,13 @@ func dumpTableData(w io.Writer, conn *sqlConn, clusterTS string, md tableMetadat
 		}
 		for si, sv := range pk {
 			b, ok := sv.([]byte)
-			if ok && strings.HasPrefix(md.columnTypes[pkcols[si]], "STRING") {
+			if ok && strings.HasPrefix(md.columnTypes[pkcols[si].Name], "STRING") {
 				// Primary key strings need to be converted to a go string, but not SQL
 				// encoded since they aren't being written to a text file.
 				pk[si] = string(b)
 			}
 		}
-		if err := rows.Close(); err != nil {
+		if err := rows.Err(); err != nil {
 			return err
 		}
 		if len(inserts) != 0 {

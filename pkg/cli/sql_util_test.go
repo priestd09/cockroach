@@ -16,7 +16,6 @@ package cli
 
 import (
 	"bytes"
-	"database/sql/driver"
 	"net/url"
 	"reflect"
 	"testing"
@@ -24,6 +23,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/security"
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
+	"github.com/jackc/pgx"
 )
 
 func TestConnRecover(t *testing.T) {
@@ -36,7 +36,10 @@ func TestConnRecover(t *testing.T) {
 	url, cleanup := sqlutils.PGUrl(t, c.ServingAddr(), t.Name(), url.User(security.RootUser))
 	defer cleanup()
 
-	conn := makeSQLConn(url.String())
+	conn, err := makeSQLConn(url.String())
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer conn.Close()
 
 	// Sanity check to establish baseline.
@@ -44,7 +47,8 @@ func TestConnRecover(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rows.Close(); err != nil {
+	rows.Close()
+	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -52,7 +56,7 @@ func TestConnRecover(t *testing.T) {
 	defer simulateServerRestart(&c, p, conn)()
 
 	_, err = conn.Query(`SELECT 1`, nil)
-	if err == nil || err != driver.ErrBadConn {
+	if err == nil || err != pgx.ErrDeadConn {
 		t.Fatalf("conn.Query(): expected bad conn, got %v", err)
 	}
 	// Check that Query recovers from a connection close by re-connecting.
@@ -60,14 +64,15 @@ func TestConnRecover(t *testing.T) {
 	if err != nil {
 		t.Fatalf("conn.Query(): expected no error after reconnect, got %v", err)
 	}
-	if err := rows.Close(); err != nil {
+	rows.Close()
+	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
 
 	// Check that Exec detects a connection close.
 	defer simulateServerRestart(&c, p, conn)()
 
-	if err := conn.Exec(`SELECT 1`, nil); err == nil || err != driver.ErrBadConn {
+	if err := conn.Exec(`SELECT 1`, nil); err == nil || err != pgx.ErrDeadConn {
 		t.Fatalf("conn.Exec(): expected bad conn, got %v", err)
 	}
 	// Check that Exec recovers from a connection close by re-connecting.
@@ -95,7 +100,10 @@ func TestRunQuery(t *testing.T) {
 	url, cleanup := sqlutils.PGUrl(t, c.ServingAddr(), t.Name(), url.User(security.RootUser))
 	defer cleanup()
 
-	conn := makeSQLConn(url.String())
+	conn, err := makeSQLConn(url.String())
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer conn.Close()
 
 	// Use a buffer as the io.Writer.
@@ -104,7 +112,7 @@ func TestRunQuery(t *testing.T) {
 	cliCtx.tableDisplayFormat = tableDisplayPretty
 
 	// Non-query statement.
-	if err := runQueryAndFormatResults(conn, &b, makeQuery(`SET DATABASE=system`)); err != nil {
+	if err := runQueryAndFormatResults(conn, &b, `SET DATABASE=system`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -117,7 +125,7 @@ SET
 	b.Reset()
 
 	// Use system database for sample query/output as they are fairly fixed.
-	cols, rows, _, err := runQuery(conn, makeQuery(`SHOW COLUMNS FROM system.namespace`), false)
+	cols, rows, _, err := runQuery(conn, false, `SHOW COLUMNS FROM system.namespace`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +145,7 @@ SET
 	}
 
 	if err := runQueryAndFormatResults(conn, &b,
-		makeQuery(`SHOW COLUMNS FROM system.namespace`)); err != nil {
+		`SHOW COLUMNS FROM system.namespace`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -159,7 +167,7 @@ SET
 
 	// Test placeholders.
 	if err := runQueryAndFormatResults(conn, &b,
-		makeQuery(`SELECT * FROM system.namespace WHERE name=$1`, "descriptor")); err != nil {
+		`SELECT * FROM system.namespace WHERE name=$1`, "descriptor"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -178,7 +186,7 @@ SET
 
 	// Test multiple results.
 	if err := runQueryAndFormatResults(conn, &b,
-		makeQuery(`SELECT 1; SELECT 2, 3; SELECT 'hello'`)); err != nil {
+		`SELECT 1; SELECT 2, 3; SELECT 'hello'`); err != nil {
 		t.Fatal(err)
 	}
 

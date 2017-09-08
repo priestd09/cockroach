@@ -16,9 +16,11 @@ package cli
 
 import (
 	"bytes"
-	"database/sql/driver"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/url"
 	"strings"
 	"text/tabwriter"
@@ -26,7 +28,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx"
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
 
@@ -38,15 +40,10 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 )
 
-type sqlConnI interface {
-	driver.Conn
-	driver.Execer
-	driver.Queryer
-}
-
 type sqlConn struct {
 	url          string
-	conn         sqlConnI
+	config       pgx.ConnConfig
+	conn         *pgx.Conn
 	reconnecting bool
 
 	// dbName is the last known current database, to be reconfigured in
@@ -68,19 +65,19 @@ func (c *sqlConn) ensureConn() error {
 		if c.reconnecting && isInteractive {
 			fmt.Fprintf(stderr, "connection lost; opening new connection: all session settings will be lost\n")
 		}
-		conn, err := pq.Open(c.url)
+		conn, err := pgx.Connect(c.config)
 		if err != nil {
 			return err
 		}
 		if c.reconnecting && c.dbName != "" {
 			// Attempt to reset the current database.
-			if _, err := conn.(sqlConnI).Exec(
+			if _, err := conn.Exec(
 				`SET DATABASE = `+parser.Name(c.dbName).String(), nil,
 			); err != nil {
 				fmt.Fprintf(stderr, "unable to restore current database: %v\n", err)
 			}
 		}
-		c.conn = conn.(sqlConnI)
+		c.conn = conn
 		if err := c.checkServerMetadata(); err != nil {
 			c.Close()
 			return err
@@ -105,14 +102,12 @@ func (c *sqlConn) checkServerMetadata() error {
 
 	// Retrieve the node ID and server build info.
 	rows, err := c.Query("SELECT * FROM crdb_internal.node_build_info", nil)
-	if err == driver.ErrBadConn {
+	if err == pgx.ErrDeadConn {
 		return err
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, "unable to retrieve the server's version")
 	} else {
-		defer func() { _ = rows.Close() }()
-
 		// Read the node_build_info table as an array of strings.
 		rowVals, err := getAllRowStrings(rows, true /* showMoreChars */)
 		if err != nil || len(rowVals) == 0 || len(rowVals[0]) != 3 {
@@ -178,28 +173,13 @@ func (c *sqlConn) checkServerMetadata() error {
 // getServerValue retrieves the first driverValue returned by the
 // given sql query. If the query fails or does not return a single
 // column, `false` is returned in the second result.
-func (c *sqlConn) getServerValue(what, sql string) (driver.Value, bool) {
-	var dbVals [1]driver.Value
-
-	rows, err := c.Query(sql, nil)
-	if err != nil {
+func (c *sqlConn) getServerValue(what, sql string) (string, bool) {
+	var v string
+	if err := c.QueryRow(sql).Scan(&v); err != nil {
 		fmt.Fprintf(stderr, "error retrieving the %s: %v\n", what, err)
-		return nil, false
+		return "", false
 	}
-	defer func() { _ = rows.Close() }()
-
-	if len(rows.Columns()) == 0 {
-		fmt.Fprintf(stderr, "cannot get the %s\n", what)
-		return nil, false
-	}
-
-	err = rows.Next(dbVals[:])
-	if err != nil {
-		fmt.Fprintf(stderr, "invalid %s: %v\n", what, err)
-		return nil, false
-	}
-
-	return dbVals[0], true
+	return v, true
 }
 
 // ExecTxn runs fn inside a transaction and retries it as needed.
@@ -256,127 +236,120 @@ func (c *sqlConn) ExecTxn(fn func(*sqlConn) error) (err error) {
 	}
 }
 
-func (c *sqlConn) Exec(query string, args []driver.Value) error {
+func (c *sqlConn) BeginBatch() (*pgx.Batch, error) {
+	if err := c.ensureConn(); err != nil {
+		return nil, err
+	}
+	return c.conn.BeginBatch(), nil
+}
+
+func (c *sqlConn) Exec(query string, args ...interface{}) error {
 	if err := c.ensureConn(); err != nil {
 		return err
 	}
 	if sqlCtx.echo {
 		fmt.Fprintln(stderr, ">", query)
 	}
-	_, err := c.conn.Exec(query, args)
-	if err == driver.ErrBadConn {
+	_, err := c.conn.Exec(query, args...)
+	if err == pgx.ErrDeadConn {
 		c.reconnecting = true
 		c.Close()
 	}
 	return err
 }
 
-func (c *sqlConn) Query(query string, args []driver.Value) (*sqlRows, error) {
+func (c *sqlConn) Query(query string, args ...interface{}) (*pgx.Rows, error) {
 	if err := c.ensureConn(); err != nil {
 		return nil, err
 	}
 	if sqlCtx.echo {
 		fmt.Fprintln(stderr, ">", query)
 	}
-	rows, err := c.conn.Query(query, args)
-	if err == driver.ErrBadConn {
+	rows, err := c.conn.Query(query, args...)
+	if err == pgx.ErrDeadConn {
 		c.reconnecting = true
 		c.Close()
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &sqlRows{rows: rows.(sqlRowsI), conn: c}, nil
+	return rows, nil
 }
 
-func (c *sqlConn) QueryRow(query string, args []driver.Value) ([]driver.Value, error) {
-	rows, err := makeQuery(query, args...)(c)
-	if err != nil {
-		return nil, err
+type Row struct {
+	row *pgx.Row
+	err error
+}
+
+func (r Row) Scan(dest ...interface{}) error {
+	if r.err != nil {
+		return r.err
 	}
-	defer func() { _ = rows.Close() }()
-	vals := make([]driver.Value, len(rows.Columns()))
-	err = rows.Next(vals)
-	return vals, err
+	return r.row.Scan(dest...)
+}
+
+func (c *sqlConn) QueryRow(query string, args ...interface{}) Row {
+	if err := c.ensureConn(); err != nil {
+		return Row{err: err}
+	}
+	row, err := c.conn.Query(query, args...)
+	if err == pgx.ErrDeadConn {
+		c.reconnecting = true
+		c.Close()
+	}
+	if err != nil {
+		return Row{err: err}
+	}
+	return Row{row: (*pgx.Row)(row)}
 }
 
 func (c *sqlConn) Close() {
 	if c.conn != nil {
 		err := c.conn.Close()
-		if err != nil && err != driver.ErrBadConn {
+		if err != nil && err != pgx.ErrDeadConn {
 			log.Info(context.TODO(), err)
 		}
 		c.conn = nil
 	}
 }
 
-type sqlRowsI interface {
-	driver.Rows
-	Result() driver.Result
-	Tag() string
-
-	// Go 1.8 multiple result set interfaces.
-	// TODO(mjibson): clean this up after 1.8 is released.
-	HasNextResultSet() bool
-	NextResultSet() error
-}
-
-type sqlRows struct {
-	rows sqlRowsI
-	conn *sqlConn
-}
-
-func (r *sqlRows) Columns() []string {
-	return r.rows.Columns()
-}
-
-func (r *sqlRows) Result() driver.Result {
-	return r.rows.Result()
-}
-
-func (r *sqlRows) Tag() string {
-	return r.rows.Tag()
-}
-
-func (r *sqlRows) Close() error {
-	err := r.rows.Close()
-	if err == driver.ErrBadConn {
-		r.conn.reconnecting = true
-		r.conn.Close()
+func makeSQLConn(url string) (*sqlConn, error) {
+	config, err := pgx.ParseURI(url)
+	if err != nil {
+		return nil, err
 	}
-	return err
+	if err := fixTLSConfig(url, &config); err != nil {
+		return nil, err
+	}
+	return &sqlConn{
+		url:    url,
+		config: config,
+	}, nil
 }
 
-// Next populates values with the next row of results. []byte values are copied
-// so that subsequent calls to Next and Close do not mutate values. This
-// makes it slower than theoretically possible but the safety concerns
-// (since this is unobvious and unexpected behavior) outweigh.
-func (r *sqlRows) Next(values []driver.Value) error {
-	err := r.rows.Next(values)
-	if err == driver.ErrBadConn {
-		r.conn.reconnecting = true
-		r.conn.Close()
+func fixTLSConfig(uri string, c *pgx.ConnConfig) error {
+	url, err := url.Parse(uri)
+	if err != nil {
+		return err
 	}
-	for i, v := range values {
-		if b, ok := v.([]byte); ok {
-			values[i] = append([]byte{}, b...)
+	if sslcert, sslkey := url.Query().Get("sslcert"), url.Query().Get("sslkey"); sslcert != "" && sslkey != "" {
+		cert, err := tls.LoadX509KeyPair(sslcert, sslkey)
+		if err != nil {
+			return err
+		}
+		c.TLSConfig.Certificates = []tls.Certificate{cert}
+	}
+	if sslrootcert := url.Query().Get("sslrootcert"); sslrootcert != "" {
+		c.TLSConfig.RootCAs = x509.NewCertPool()
+		cert, err := ioutil.ReadFile(sslrootcert)
+		if err != nil {
+			return err
+		}
+		if !c.TLSConfig.RootCAs.AppendCertsFromPEM(cert) {
+			return errors.New("couldn't parse pem in sslrootcert")
 		}
 	}
-	return err
-}
-
-// NextResultSet prepares the next result set for reading.
-func (r *sqlRows) NextResultSet() (bool, error) {
-	if !r.rows.HasNextResultSet() {
-		return false, nil
-	}
-	return true, r.rows.NextResultSet()
-}
-
-func makeSQLConn(url string) *sqlConn {
-	return &sqlConn{
-		url: url,
-	}
+	return nil
 }
 
 // getPasswordAndMakeSQLClient prompts for a password if running in secure mode
@@ -384,7 +357,7 @@ func makeSQLConn(url string) *sqlConn {
 // Attempting to use security.RootUser without valid certificates will return an error.
 func getPasswordAndMakeSQLClient() (*sqlConn, error) {
 	if len(sqlConnURL) != 0 {
-		return makeSQLConn(sqlConnURL), nil
+		return makeSQLConn(sqlConnURL)
 	}
 	var user *url.Userinfo
 	if !baseCfg.Insecure && !baseCfg.ClientHasValidCerts(sqlConnUser) {
@@ -414,41 +387,20 @@ func makeSQLClient(user *url.Userinfo) (*sqlConn, error) {
 		u.Path = sqlConnDBName
 		sqlURL = u.String()
 	}
-	return makeSQLConn(sqlURL), nil
-}
-
-type queryFunc func(conn *sqlConn) (*sqlRows, error)
-
-func makeQuery(query string, parameters ...driver.Value) queryFunc {
-	return func(conn *sqlConn) (*sqlRows, error) {
-		// driver.Value is an alias for interface{}, but must adhere to a restricted
-		// set of types when being passed to driver.Queryer.Query (see
-		// driver.IsValue). We use driver.DefaultParameterConverter to perform the
-		// necessary conversion. This is usually taken care of by the sql package,
-		// but we have to do so manually because we're talking directly to the
-		// driver.
-		for i := range parameters {
-			var err error
-			parameters[i], err = driver.DefaultParameterConverter.ConvertValue(parameters[i])
-			if err != nil {
-				return nil, err
-			}
-		}
-		return conn.Query(query, parameters)
-	}
+	return makeSQLConn(sqlURL)
 }
 
 // runQuery takes a 'query' with optional 'parameters'.
 // It runs the sql query and returns a list of columns names and a list of rows.
 func runQuery(
-	conn *sqlConn, fn queryFunc, showMoreChars bool,
+	conn *sqlConn, showMoreChars bool, query string, params ...interface{},
 ) ([]string, [][]string, string, error) {
-	rows, err := fn(conn)
+	rows, err := conn.Query(query, params...)
 	if err != nil {
 		return nil, nil, "", err
 	}
 
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	return sqlRowsToStrings(rows, showMoreChars)
 }
 
@@ -467,65 +419,65 @@ func handleCopyError(conn *sqlConn, err error) error {
 	return errors.New("woops! COPY has confused this client! Suggestion: use 'psql' for COPY")
 }
 
-// runQueryAndFormatResults takes a 'query' with optional 'parameters'.
-// It runs the sql query and writes output to 'w'.
-func runQueryAndFormatResults(conn *sqlConn, w io.Writer, fn queryFunc) error {
-	startTime := timeutil.Now()
-	rows, err := fn(conn)
+// runQueryAndFormatResults takes a query with parameters and writes the
+// output to w.
+func runQueryAndFormatResults(conn *sqlConn, w io.Writer, query string, params ...interface{}) error {
+	stmts, err := parser.Parse(query)
 	if err != nil {
-		return handleCopyError(conn, err)
+		return err
+	}
+	if len(stmts) > 1 && len(params) != 0 {
+		return errors.Errorf("params only supported with a single statement: %s", query)
+	}
+	b, err := conn.BeginBatch()
+	if err != nil {
+		return err
+	}
+	b.Queue(stmts[0].String(), params, nil, nil)
+	for _, s := range stmts[1:] {
+		b.Queue(s.String(), nil, nil, nil)
+	}
+
+	startTime := timeutil.Now()
+	ctx := context.Background()
+	if err := b.Send(ctx, nil); err != nil {
+		return err
 	}
 	defer func() {
-		_ = rows.Close()
+		_ = b.Close()
 	}()
-	for {
-		cols := getColumnStrings(rows)
-		if len(cols) == 0 {
-			// When no columns are returned, we want to render a summary of the
-			// number of rows that were returned or affected. To do this this, the
-			// driver needs to "consume" all the rows so that the RowsAffected()
-			// method returns the correct number of rows (it only reports the number
-			// of rows that the driver consumes).
-			if err := consumeAllRows(rows); err != nil {
-				return err
-			}
-		}
-		formattedTag := getFormattedTag(rows.Tag(), rows.Result())
-		if err := printQueryOutput(w, cols, newRowIter(rows, true), formattedTag); err != nil {
-			return err
-		}
-		if cliCtx.showTimes {
-			// Present the time since the last result, or since the
-			// beginning of execution. Currently the execution engine makes
-			// all the work upfront so most of the time is accounted for by
-			// the 1st result; this is subject to change once CockroachDB
-			// evolves to stream results as statements are executed.
-			newNow := timeutil.Now()
-			fmt.Fprintf(w, "\nTime: %s\n\n", newNow.Sub(startTime))
-			startTime = newNow
-		}
 
-		if more, err := rows.NextResultSet(); err != nil {
-			return err
-		} else if !more {
-			return nil
-		}
-	}
-}
-
-// consumeAllRows consumes all of the rows from the network. Used this method
-// when the driver needs to consume all the rows, but you don't care about the
-// rows themselves.
-func consumeAllRows(rows *sqlRows) error {
+Loop:
 	for {
-		err := rows.Next(nil)
-		if err == io.EOF {
-			return nil
-		}
+		msg, err := b.Next()
 		if err != nil {
 			return err
 		}
+		switch msg := msg.(type) {
+		case pgx.CommandTag:
+			if err := printQueryOutput(w, nil, nil, string(msg)); err != nil {
+				return err
+			}
+		case *pgx.Rows:
+			cols := getColumnStrings(msg)
+			if err := printQueryOutput(w, cols, newRowIter(msg, true), ""); err != nil {
+				return err
+			}
+		case nil:
+			break Loop
+		}
 	}
+	if cliCtx.showTimes {
+		// Present the time since the last result, or since the
+		// beginning of execution. Currently the execution engine makes
+		// all the work upfront so most of the time is accounted for by
+		// the 1st result; this is subject to change once CockroachDB
+		// evolves to stream results as statements are executed.
+		newNow := timeutil.Now()
+		fmt.Fprintf(w, "\nTime: %s\n\n", newNow.Sub(startTime))
+		startTime = newNow
+	}
+	return nil
 }
 
 // sqlRowsToStrings turns 'rows' into a list of rows, each of which
@@ -535,27 +487,28 @@ func consumeAllRows(rows *sqlRows) error {
 // If both the header row and list of rows are empty, it means no row
 // information was returned (eg: statement was not a query).
 // If showMoreChars is true, then more characters are not escaped.
-func sqlRowsToStrings(rows *sqlRows, showMoreChars bool) ([]string, [][]string, string, error) {
+func sqlRowsToStrings(rows *pgx.Rows, showMoreChars bool) ([]string, [][]string, string, error) {
 	cols := getColumnStrings(rows)
 	allRows, err := getAllRowStrings(rows, showMoreChars)
 	if err != nil {
 		return nil, nil, "", err
 	}
-	tag := getFormattedTag(rows.Tag(), rows.Result())
+	//tag := getFormattedTag(rows.Tag(), rows.Result())
+	tag := "TODO"
 
 	return cols, allRows, tag, nil
 }
 
-func getColumnStrings(rows *sqlRows) []string {
-	srcCols := rows.Columns()
+func getColumnStrings(rows *pgx.Rows) []string {
+	srcCols := rows.FieldDescriptions()
 	cols := make([]string, len(srcCols))
 	for i, c := range srcCols {
-		cols[i] = formatVal(c, true, false)
+		cols[i] = formatVal(c.Name, true, false)
 	}
 	return cols
 }
 
-func getAllRowStrings(rows *sqlRows, showMoreChars bool) ([][]string, error) {
+func getAllRowStrings(rows *pgx.Rows, showMoreChars bool) ([][]string, error) {
 	var allRows [][]string
 
 	for {
@@ -572,38 +525,20 @@ func getAllRowStrings(rows *sqlRows, showMoreChars bool) ([][]string, error) {
 	return allRows, nil
 }
 
-func getNextRowStrings(rows *sqlRows, showMoreChars bool) ([]string, error) {
-	cols := rows.Columns()
-	var vals []driver.Value
-	if len(cols) > 0 {
-		vals = make([]driver.Value, len(cols))
+func getNextRowStrings(rows *pgx.Rows, showMoreChars bool) ([]string, error) {
+	if !rows.Next() {
+		return nil, rows.Err()
 	}
-
-	err := rows.Next(vals)
-	if err == io.EOF {
-		return nil, nil
-	}
+	vals, err := rows.Values()
 	if err != nil {
 		return nil, err
 	}
 
-	rowStrings := make([]string, len(cols))
+	rowStrings := make([]string, len(vals))
 	for i, v := range vals {
 		rowStrings[i] = formatVal(v, showMoreChars, showMoreChars)
 	}
 	return rowStrings, nil
-}
-
-func getFormattedTag(tag string, result driver.Result) string {
-	switch tag {
-	case "":
-		tag = "OK"
-	case "SELECT", "DELETE", "INSERT", "UPDATE":
-		if n, err := result.RowsAffected(); err == nil {
-			tag = fmt.Sprintf("%s %d", tag, n)
-		}
-	}
-	return tag
 }
 
 // expandTabsAndNewLines ensures that multi-line row strings that may
@@ -627,7 +562,7 @@ func isNotGraphicUnicodeOrTabOrNewline(r rune) bool {
 	return r != '\t' && r != '\n' && !unicode.IsGraphic(r)
 }
 
-func formatVal(val driver.Value, showPrintableUnicode bool, showNewLinesAndTabs bool) string {
+func formatVal(val interface{}, showPrintableUnicode bool, showNewLinesAndTabs bool) string {
 	switch t := val.(type) {
 	case nil:
 		return "NULL"

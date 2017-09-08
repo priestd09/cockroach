@@ -57,57 +57,35 @@ func unmarshalProto(val driver.Value, msg proto.Message) error {
 }
 
 func queryZones(conn *sqlConn) (map[sqlbase.ID]config.ZoneConfig, error) {
-	rows, err := makeQuery(`SELECT * FROM system.zones`)(conn)
+	rows, err := conn.Query(`SELECT id, config FROM system.zones`)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
 
-	vals := make([]driver.Value, len(rows.Columns()))
 	zones := make(map[sqlbase.ID]config.ZoneConfig)
 
-	for {
-		if err := rows.Next(vals); err != nil {
-			if err == io.EOF {
-				break
-			}
+	for rows.Next() {
+		var id sqlbase.ID
+		var data []byte
+		if err := rows.Scan(&id, &data); err != nil {
 			return nil, err
 		}
-
-		id, ok := vals[0].(int64)
-		if !ok {
-			return nil, fmt.Errorf("unexpected value: %T", vals[0])
-		}
-		zone := config.ZoneConfig{}
-		if err := unmarshalProto(vals[1], &zone); err != nil {
+		var zone config.ZoneConfig
+		if err := unmarshalProto(data, &zone); err != nil {
 			return nil, err
 		}
-		zones[sqlbase.ID(id)] = zone
+		zones[id] = zone
 	}
 	return zones, nil
 }
 
 func queryZone(conn *sqlConn, id sqlbase.ID) (config.ZoneConfig, bool, error) {
-	rows, err := makeQuery(`SELECT config FROM system.zones WHERE id = $1`, id)(conn)
-	if err != nil {
+	var data []byte
+	if err := conn.QueryRow(`SELECT config FROM system.zones WHERE id = $1`, id).Scan(&data); err != nil {
 		return config.ZoneConfig{}, false, err
 	}
-	defer func() { _ = rows.Close() }()
-
-	if len(rows.Columns()) != 1 {
-		return config.ZoneConfig{}, false, fmt.Errorf("unexpected result columns: %d", len(rows.Columns()))
-	}
-
-	vals := make([]driver.Value, 1)
-	if err := rows.Next(vals); err != nil {
-		if err == io.EOF {
-			return config.ZoneConfig{}, false, nil
-		}
-		return config.ZoneConfig{}, false, err
-	}
-
 	var zone config.ZoneConfig
-	return zone, true, unmarshalProto(vals[0], &zone)
+	return zone, true, unmarshalProto(data, &zone)
 }
 
 func queryZonePath(conn *sqlConn, path []sqlbase.ID) (sqlbase.ID, config.ZoneConfig, error) {
@@ -121,25 +99,21 @@ func queryZonePath(conn *sqlConn, path []sqlbase.ID) (sqlbase.ID, config.ZoneCon
 }
 
 func queryDescriptors(conn *sqlConn) (map[sqlbase.ID]*sqlbase.Descriptor, error) {
-	rows, err := makeQuery(`SELECT descriptor FROM system.descriptor`)(conn)
+	rows, err := conn.Query(`SELECT descriptor FROM system.descriptor`)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
 
-	vals := make([]driver.Value, len(rows.Columns()))
 	descs := map[sqlbase.ID]*sqlbase.Descriptor{}
 
-	for {
-		if err := rows.Next(vals); err != nil {
-			if err == io.EOF {
-				break
-			}
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
 			return nil, err
 		}
 
 		desc := &sqlbase.Descriptor{}
-		if err := unmarshalProto(vals[0], desc); err != nil {
+		if err := unmarshalProto(data, desc); err != nil {
 			return nil, err
 		}
 		descs[desc.GetID()] = desc
@@ -149,30 +123,13 @@ func queryDescriptors(conn *sqlConn) (map[sqlbase.ID]*sqlbase.Descriptor, error)
 }
 
 func queryNamespace(conn *sqlConn, parentID sqlbase.ID, name string) (sqlbase.ID, error) {
-	rows, err := makeQuery(
+	var id sqlbase.ID
+	if err := conn.QueryRow(
 		`SELECT id FROM system.namespace WHERE "parentID" = $1 AND name = $2`,
-		parentID, name)(conn)
-	if err != nil {
+		parentID, name).Scan(&id); err != nil {
 		return 0, err
 	}
-	defer func() { _ = rows.Close() }()
-
-	if err != nil {
-		return 0, fmt.Errorf("%s not found: %v", name, err)
-	}
-	if len(rows.Columns()) != 1 {
-		return 0, fmt.Errorf("unexpected result columns: %d", len(rows.Columns()))
-	}
-	vals := make([]driver.Value, 1)
-	if err := rows.Next(vals); err != nil {
-		return 0, err
-	}
-	switch t := vals[0].(type) {
-	case int64:
-		return sqlbase.ID(t), nil
-	default:
-		return 0, fmt.Errorf("unexpected result type: %T", vals[0])
-	}
+	return id, nil
 }
 
 func queryDescriptorIDPath(conn *sqlConn, names []string) ([]sqlbase.ID, error) {
@@ -402,7 +359,7 @@ func runRmZone(cmd *cobra.Command, args []string) error {
 		}
 
 		if err := runQueryAndFormatResults(conn, os.Stdout,
-			makeQuery(`DELETE FROM system.zones WHERE id=$1`, id)); err != nil {
+			`DELETE FROM system.zones WHERE id=$1`, id); err != nil {
 			return err
 		}
 
@@ -518,9 +475,9 @@ func runSetZone(cmd *cobra.Command, args []string) error {
 		}
 
 		id := path[len(path)-1]
-		_, _, _, err = runQuery(conn, makeQuery(
+		_, _, _, err = runQuery(conn, false,
 			`UPSERT INTO system.zones (id, config) VALUES ($1, $2)`,
-			id, buf), false)
+			id, buf)
 		if err != nil {
 			return err
 		}

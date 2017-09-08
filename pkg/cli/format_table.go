@@ -24,6 +24,7 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/sql/parser"
 	"github.com/cockroachdb/cockroach/pkg/util"
+	"github.com/jackc/pgx"
 	"github.com/olekukonko/tablewriter"
 )
 
@@ -67,7 +68,7 @@ func newRowSliceIter(allRows [][]string) *rowSliceIter {
 }
 
 type rowIter struct {
-	rows          *sqlRows
+	rows          *pgx.Rows
 	showMoreChars bool
 }
 
@@ -86,7 +87,7 @@ func (iter *rowIter) ToSlice() ([][]string, error) {
 	return getAllRowStrings(iter.rows, iter.showMoreChars)
 }
 
-func newRowIter(rows *sqlRows, showMoreChars bool) *rowIter {
+func newRowIter(rows *pgx.Rows, showMoreChars bool) *rowIter {
 	return &rowIter{
 		rows:          rows,
 		showMoreChars: showMoreChars,
