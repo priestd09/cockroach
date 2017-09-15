@@ -910,6 +910,7 @@ func (l *DistLoader) LoadCSV(
 	comma, comment rune,
 	nullif *string,
 	walltime int64,
+	fileFormat string,
 ) error {
 	const (
 		splitSize  = 1024 * 1024 * 32 // 32MB

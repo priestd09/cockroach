@@ -138,7 +138,7 @@ func LoadCSV(
 	defer r.Close()
 
 	return doLocalCSVTransform(
-		ctx, nil, parentID, tableDesc, dest, dataFiles, comma, comment, nullif, sstMaxSize, r, walltime,
+		ctx, nil, parentID, tableDesc, dest, dataFiles, comma, comment, nullif, sstMaxSize, r, walltime, "CSV",
 	)
 }
 
@@ -154,6 +154,7 @@ func doLocalCSVTransform(
 	sstMaxSize int64,
 	tempEngine engine.Engine,
 	walltime int64,
+	fileFormat string,
 ) (csvCount, kvCount, sstCount int64, err error) {
 	// Some channels are buffered because reads happen in bursts, so having lots
 	// of pre-computed data improves overall performance.
@@ -166,7 +167,7 @@ func doLocalCSVTransform(
 	group.Go(func() error {
 		defer close(recordCh)
 		var err error
-		csvCount, err = readCSV(gCtx, comma, comment, len(tableDesc.VisibleColumns()), dataFiles, recordCh)
+		csvCount, err = readCSV(gCtx, comma, comment, len(tableDesc.VisibleColumns()), dataFiles, recordCh, fileFormat)
 		if job != nil {
 			if err := job.Progressed(ctx, 1.0/3.0, jobs.Noop); err != nil {
 				log.Warningf(ctx, "failed to update job progress: %s", err)
@@ -299,6 +300,7 @@ func readCSV(
 	expectedCols int,
 	dataFiles []string,
 	recordCh chan<- csvRecord,
+	fileFormat string,
 ) (int64, error) {
 	expectedColsExtra := expectedCols + 1
 	done := ctx.Done()
@@ -366,6 +368,46 @@ func readCSV(
 		}
 	}
 	return count, nil
+}
+
+type fileFormatReader interface {
+	Next() ([]string, error)
+}
+
+type csvFormatReader struct {
+	r                 csv.Reader
+	expectedCols      int
+	expectedColsExtra int
+}
+
+func (c *csvFormatReader) Next() ([]string, error) {
+	record, err := c.r.Read()
+	if err == io.EOF {
+		return nil, err
+	}
+	if err != nil {
+		return nil, errors.Wrap(err, "reading CSV record")
+	}
+	if len(record) == c.expectedCols {
+		// Expected number of columns.
+	} else if len(record) == c.expectedColsExtra && record[c.expectedCols] == "" {
+		// Line has the optional trailing comma, ignore the empty field.
+		record = record[:c.expectedCols]
+	} else {
+		return errors.Errorf("row %d: expected %d fields, got %d", i, expectedCols, len(record))
+	}
+	cr := csvRecord{
+		r:    record,
+		file: dataFile,
+		row:  i,
+	}
+	select {
+	case <-done:
+		return ctx.Err()
+	case recordCh <- cr:
+		count++
+	}
+
 }
 
 type csvRecord struct {
@@ -704,11 +746,6 @@ func importPlanHook(
 		}
 	}
 
-	if importStmt.FileFormat != "CSV" {
-		// not possible with current parser rules.
-		return nil, nil, errors.Errorf("unsupported import format: %q", importStmt.FileFormat)
-	}
-
 	optsFn, err := p.TypeAsStringOpts(importStmt.Options, importOptionExpectValues)
 	if err != nil {
 		return nil, nil, err
@@ -842,13 +879,14 @@ func importPlanHook(
 			_, importErr = doDistributedCSVTransform(
 				ctx, job, files, p, tableDesc, temp,
 				comma, comment, nullif, walltime,
+				importStmt.FileFormat,
 			)
 		} else {
 			_, _, _, importErr = doLocalCSVTransform(
 				ctx, job, parentID, tableDesc, temp, files,
 				comma, comment, nullif, sstSize,
 				p.ExecCfg().DistSQLSrv.TempStorage,
-				walltime,
+				walltime, importStmt.FileFormat,
 			)
 		}
 		if err := job.FinishedWith(ctx, importErr); err != nil {
@@ -894,6 +932,7 @@ func doDistributedCSVTransform(
 	comma, comment rune,
 	nullif *string,
 	walltime int64,
+	fileFormat string,
 ) (int64, error) {
 	evalCtx := p.EvalContext()
 
@@ -935,6 +974,7 @@ func doDistributedCSVTransform(
 		comma, comment,
 		nullif,
 		walltime,
+		fileFormat,
 	); err != nil {
 		return 0, err
 	}

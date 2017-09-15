@@ -1260,6 +1260,10 @@ import_data_format:
   {
     $$ = "CSV"
   }
+  SQL
+  {
+    $$ = "SQL"
+  }
 
 // %Help: IMPORT - load data from file in a distributed manner
 // %Category: CCL
