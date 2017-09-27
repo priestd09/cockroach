@@ -196,12 +196,12 @@ func doLocalCSVTransform(
 		)
 		// Both read and write progress funcs register their progress as 50% of total progress.
 		readProgressFn = func(pct float32) {
-			if err := job.Progressed(ctx, pct*readPct, jobs.Noop); err != nil {
+			if err := job.Progressed(ctx, jobs.SimpleProgress(pct*readPct)); err != nil {
 				log.Warningf(ctx, "failed to update job progress: %s", err)
 			}
 		}
 		writeProgressFn = func(pct float32) {
-			if err := job.Progressed(ctx, readPct+pct*writePct, jobs.Noop); err != nil {
+			if err := job.Progressed(ctx, jobs.SimpleProgress(readPct+pct*writePct)); err != nil {
 				log.Warningf(ctx, "failed to update job progress: %s", err)
 			}
 		}
@@ -227,7 +227,7 @@ func doLocalCSVTransform(
 		var err error
 		kvCount, err = writeRocksDB(gCtx, kvCh, store.NewBatchWriter())
 		if job != nil {
-			if err := job.Progressed(ctx, 2.0/3.0, jobs.Noop); err != nil {
+			if err := job.Progressed(ctx, jobs.SimpleProgress(2.0/3.0)); err != nil {
 				log.Warningf(ctx, "failed to update job progress: %s", err)
 			}
 		}

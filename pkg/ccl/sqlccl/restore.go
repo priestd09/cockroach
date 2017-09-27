@@ -800,11 +800,12 @@ func restore(
 		lowWaterMark:      -1,
 	}
 
-	progressLogger := jobProgressLogger{
+	var progressLogger *jobProgressLogger
+	progressLogger = &jobProgressLogger{
 		job:           job,
 		totalChunks:   len(importSpans),
 		startFraction: job.Payload().FractionCompleted,
-		progressedFn: func(progressedCtx context.Context, details interface{}) {
+		progressedFn: func(progressedCtx context.Context, details interface{}) (float32, error) {
 			switch d := details.(type) {
 			case *jobs.Payload_Restore:
 				mu.Lock()
@@ -815,6 +816,7 @@ func restore(
 			default:
 				log.Errorf(progressedCtx, "job payload had unexpected type %T", d)
 			}
+			return progressLogger.lastReportedFraction, nil
 		},
 	}
 

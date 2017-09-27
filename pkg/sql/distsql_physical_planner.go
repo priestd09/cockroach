@@ -1067,7 +1067,7 @@ func (l *DistLoader) LoadCSV(
 		},
 	}
 
-	if err := job.Progressed(ctx, 1.0/3.0, jobs.Noop); err != nil {
+	if err := job.Progressed(ctx, jobs.SimpleProgress(1.0/3.0)); err != nil {
 		log.Warningf(ctx, "failed to update job progress: %s", err)
 	}
 

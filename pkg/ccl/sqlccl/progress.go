@@ -64,7 +64,7 @@ func (jpl *jobProgressLogger) chunkFinished(ctx context.Context) error {
 	}
 	jpl.lastReportedAt = timeutil.Now()
 	jpl.lastReportedFraction = fraction
-	return jpl.job.Progressed(ctx, fraction, jpl.progressedFn)
+	return jpl.job.Progressed(ctx, jpl.progressedFn)
 }
 
 // loop calls chunkFinished for every message received over chunkCh. It exits

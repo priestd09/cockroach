@@ -168,35 +168,37 @@ func (j *Job) Started(ctx context.Context) error {
 
 // ProgressedFn is a callback that allows arbitrary modifications to a job's
 // details when updating its progress.
-type ProgressedFn func(ctx context.Context, details interface{})
+type ProgressedFn func(ctx context.Context, details interface{}) (float32, error)
 
-// Noop is a nil ProgressedFn.
-var Noop ProgressedFn
-
-// Progressed updates the progress of the tracked job to fractionCompleted. A
-// fractionCompleted that is less than the currently-recorded fractionCompleted
-// will be silently ignored. If progressedFn is non-nil, it will be invoked with
-// a pointer to the job's details to allow for modifications to the details
-// before the job is saved. If no such modifications are required, pass Noop
-// instead of nil for readability.
-func (j *Job) Progressed(
-	ctx context.Context, fractionCompleted float32, progressedFn ProgressedFn,
-) error {
-	if fractionCompleted < 0.0 || fractionCompleted > 1.0 {
-		return errors.Errorf(
-			"Job: fractionCompleted %f is outside allowable range [0.0, 1.0] (job %d)",
-			fractionCompleted, j.id,
-		)
+// SimpleProgress returns a ProgressedFn that returns progress.
+func SimpleProgress(progress float32) ProgressedFn {
+	return func(ctx context.Context, details interface{}) (float32, error) {
+		return progress, nil
 	}
+}
+
+// Progressed updates the progress of the tracked job
+// to fractionCompleted. progressedFn is a transaction-safe function
+// that returns the current progress, possibly based on the job details,
+// which it can also modify and will be saved. If it return less than the
+// currently-recorded fractionCompleted, it will be silently ignored.
+func (j *Job) Progressed(ctx context.Context, progressedFn ProgressedFn) error {
 	return j.update(ctx, func(status *Status, payload *Payload) (bool, error) {
 		if *status != StatusRunning {
 			return false, &InvalidStatusError{*j.id, *status, "update progress on"}
 		}
+		fractionCompleted, err := progressedFn(ctx, payload.Details)
+		if err != nil {
+			return false, err
+		}
+		if fractionCompleted < 0.0 || fractionCompleted > 1.0 {
+			return false, errors.Errorf(
+				"Job: fractionCompleted %f is outside allowable range [0.0, 1.0] (job %d)",
+				fractionCompleted, j.id,
+			)
+		}
 		if fractionCompleted > payload.FractionCompleted {
 			payload.FractionCompleted = fractionCompleted
-		}
-		if progressedFn != nil {
-			progressedFn(ctx, payload.Details)
 		}
 		return true, nil
 	})
