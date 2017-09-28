@@ -1162,12 +1162,17 @@ var csvOutputTypes = []sqlbase.ColumnType{
 func newReadCSVProcessor(
 	flowCtx *distsqlrun.FlowCtx, spec distsqlrun.ReadCSVSpec, output distsqlrun.RowReceiver,
 ) (distsqlrun.Processor, error) {
+	job, err := flowCtx.JobRegistry.LoadJob(ctx, spec.JobID)
+	if err != nil {
+		return nil, err
+	}
 	cp := &readCSVProcessor{
 		csvOptions: spec.Options,
 		sampleSize: spec.SampleSize,
 		tableDesc:  spec.TableDesc,
 		uri:        spec.Uri,
 		output:     output,
+		job:        job,
 	}
 	if err := cp.out.Init(&distsqlrun.PostProcessSpec{}, csvOutputTypes, &flowCtx.EvalCtx, output); err != nil {
 		return nil, err
@@ -1182,6 +1187,7 @@ type readCSVProcessor struct {
 	uri        string
 	out        distsqlrun.ProcOutputHelper
 	output     distsqlrun.RowReceiver
+	job        *jobs.Job
 }
 
 var _ distsqlrun.Processor = &readCSVProcessor{}
@@ -1197,6 +1203,25 @@ func (cp *readCSVProcessor) Run(ctx context.Context, wg *sync.WaitGroup) {
 	if wg != nil {
 		defer wg.Done()
 	}
+	
+	{C
+		conf, err := storageccl.ExportStorageConfFromURI(dataFile)
+		if err != nil {
+			return 0, err
+		}
+		es, err := storageccl.MakeExportStorage(ctx, conf)
+		if err != nil {
+			return 0, err
+		}
+		sz, err := es.Size(ctx, "")
+		es.Close()
+		if sz <= 0 {
+			// Don't log dataFile here because it could leak auth information.
+			log.Infof(ctx, "could not fetch file size; falling back to per-file progress: %v", err)
+			totalBytes = 0
+			break
+		}
+		totalBytes += sz
 
 	group, gCtx := errgroup.WithContext(ctx)
 	done := gCtx.Done()

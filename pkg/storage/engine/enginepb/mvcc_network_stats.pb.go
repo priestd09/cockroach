@@ -2,6 +2,22 @@
 // source: cockroach/pkg/storage/engine/enginepb/mvcc_network_stats.proto
 // DO NOT EDIT!
 
+/*
+	Package enginepb is a generated protocol buffer package.
+
+	It is generated from these files:
+		cockroach/pkg/storage/engine/enginepb/mvcc_network_stats.proto
+		cockroach/pkg/storage/engine/enginepb/mvcc.proto
+		cockroach/pkg/storage/engine/enginepb/rocksdb.proto
+
+	It has these top-level messages:
+		MVCCNetworkStats
+		TxnMeta
+		MVCCMetadata
+		MVCCStats
+		SSTUserProperties
+		SSTUserPropertiesCollection
+*/
 package enginepb
 
 import proto "github.com/gogo/protobuf/proto"
@@ -14,6 +30,12 @@ import io "io"
 var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the proto package it is being compiled against.
+// A compilation error at this line likely means your copy of the
+// proto package needs to be updated.
+const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 
 // MVCCNetworkStats needs to be convertible to MVCCStats. The fields
 // and encodings are identical, except we're using proto3 vs

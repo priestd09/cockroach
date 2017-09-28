@@ -21369,6 +21369,7 @@ export namespace cockroach {
 
             type ImportDetails$Properties = {
                 tables?: cockroach.sql.jobs.ImportDetails.Table$Properties[];
+                table_progress?: cockroach.sql.jobs.ImportDetails.TableProgress$Properties[];
             };
 
             /**
@@ -21392,6 +21393,12 @@ export namespace cockroach {
                  * @type {Array.<cockroach.sql.jobs.ImportDetails.Table$Properties>}
                  */
                 public tables: cockroach.sql.jobs.ImportDetails.Table$Properties[];
+
+                /**
+                 * ImportDetails table_progress.
+                 * @type {Array.<cockroach.sql.jobs.ImportDetails.TableProgress$Properties>}
+                 */
+                public table_progress: cockroach.sql.jobs.ImportDetails.TableProgress$Properties[];
 
                 /**
                  * Creates a new ImportDetails instance using the specified properties.
@@ -21614,6 +21621,256 @@ export namespace cockroach {
                      * @returns {Object.<string,*>} JSON object
                      */
                     public toJSON(): { [k: string]: any };
+                }
+
+                type TableProgress$Properties = {
+                    uris?: { [k: string]: cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties };
+                    kvs?: { [k: string]: cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties };
+                    ssts?: { [k: string]: cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties };
+                };
+
+                /**
+                 * Constructs a new TableProgress.
+                 * @exports cockroach.sql.jobs.ImportDetails.TableProgress
+                 * @constructor
+                 * @param {cockroach.sql.jobs.ImportDetails.TableProgress$Properties=} [properties] Properties to set
+                 */
+                class TableProgress {
+
+                    /**
+                     * Constructs a new TableProgress.
+                     * @exports cockroach.sql.jobs.ImportDetails.TableProgress
+                     * @constructor
+                     * @param {cockroach.sql.jobs.ImportDetails.TableProgress$Properties=} [properties] Properties to set
+                     */
+                    constructor(properties?: cockroach.sql.jobs.ImportDetails.TableProgress$Properties);
+
+                    /**
+                     * TableProgress uris.
+                     * @type {Object.<string,cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties>}
+                     */
+                    public uris: { [k: string]: cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties };
+
+                    /**
+                     * TableProgress kvs.
+                     * @type {Object.<string,cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties>}
+                     */
+                    public kvs: { [k: string]: cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties };
+
+                    /**
+                     * TableProgress ssts.
+                     * @type {Object.<string,cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties>}
+                     */
+                    public ssts: { [k: string]: cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties };
+
+                    /**
+                     * Creates a new TableProgress instance using the specified properties.
+                     * @param {cockroach.sql.jobs.ImportDetails.TableProgress$Properties=} [properties] Properties to set
+                     * @returns {cockroach.sql.jobs.ImportDetails.TableProgress} TableProgress instance
+                     */
+                    public static create(properties?: cockroach.sql.jobs.ImportDetails.TableProgress$Properties): cockroach.sql.jobs.ImportDetails.TableProgress;
+
+                    /**
+                     * Encodes the specified TableProgress message. Does not implicitly {@link cockroach.sql.jobs.ImportDetails.TableProgress.verify|verify} messages.
+                     * @param {cockroach.sql.jobs.ImportDetails.TableProgress$Properties} message TableProgress message or plain object to encode
+                     * @param {$protobuf.Writer} [writer] Writer to encode to
+                     * @returns {$protobuf.Writer} Writer
+                     */
+                    public static encode(message: cockroach.sql.jobs.ImportDetails.TableProgress$Properties, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                    /**
+                     * Encodes the specified TableProgress message, length delimited. Does not implicitly {@link cockroach.sql.jobs.ImportDetails.TableProgress.verify|verify} messages.
+                     * @param {cockroach.sql.jobs.ImportDetails.TableProgress$Properties} message TableProgress message or plain object to encode
+                     * @param {$protobuf.Writer} [writer] Writer to encode to
+                     * @returns {$protobuf.Writer} Writer
+                     */
+                    public static encodeDelimited(message: cockroach.sql.jobs.ImportDetails.TableProgress$Properties, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                    /**
+                     * Decodes a TableProgress message from the specified reader or buffer.
+                     * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+                     * @param {number} [length] Message length if known beforehand
+                     * @returns {cockroach.sql.jobs.ImportDetails.TableProgress} TableProgress
+                     * @throws {Error} If the payload is not a reader or valid buffer
+                     * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                     */
+                    public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): cockroach.sql.jobs.ImportDetails.TableProgress;
+
+                    /**
+                     * Decodes a TableProgress message from the specified reader or buffer, length delimited.
+                     * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+                     * @returns {cockroach.sql.jobs.ImportDetails.TableProgress} TableProgress
+                     * @throws {Error} If the payload is not a reader or valid buffer
+                     * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                     */
+                    public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): cockroach.sql.jobs.ImportDetails.TableProgress;
+
+                    /**
+                     * Verifies a TableProgress message.
+                     * @param {Object.<string,*>} message Plain object to verify
+                     * @returns {?string} `null` if valid, otherwise the reason why it is not
+                     */
+                    public static verify(message: { [k: string]: any }): string;
+
+                    /**
+                     * Creates a TableProgress message from a plain object. Also converts values to their respective internal types.
+                     * @param {Object.<string,*>} object Plain object
+                     * @returns {cockroach.sql.jobs.ImportDetails.TableProgress} TableProgress
+                     */
+                    public static fromObject(object: { [k: string]: any }): cockroach.sql.jobs.ImportDetails.TableProgress;
+
+                    /**
+                     * Creates a TableProgress message from a plain object. Also converts values to their respective internal types.
+                     * This is an alias of {@link cockroach.sql.jobs.ImportDetails.TableProgress.fromObject}.
+                     * @function
+                     * @param {Object.<string,*>} object Plain object
+                     * @returns {cockroach.sql.jobs.ImportDetails.TableProgress} TableProgress
+                     */
+                    public static from(object: { [k: string]: any }): cockroach.sql.jobs.ImportDetails.TableProgress;
+
+                    /**
+                     * Creates a plain object from a TableProgress message. Also converts values to other types if specified.
+                     * @param {cockroach.sql.jobs.ImportDetails.TableProgress} message TableProgress
+                     * @param {$protobuf.ConversionOptions} [options] Conversion options
+                     * @returns {Object.<string,*>} Plain object
+                     */
+                    public static toObject(message: cockroach.sql.jobs.ImportDetails.TableProgress, options?: $protobuf.ConversionOptions): { [k: string]: any };
+
+                    /**
+                     * Creates a plain object from this TableProgress message. Also converts values to other types if specified.
+                     * @param {$protobuf.ConversionOptions} [options] Conversion options
+                     * @returns {Object.<string,*>} Plain object
+                     */
+                    public toObject(options?: $protobuf.ConversionOptions): { [k: string]: any };
+
+                    /**
+                     * Converts this TableProgress to JSON.
+                     * @returns {Object.<string,*>} JSON object
+                     */
+                    public toJSON(): { [k: string]: any };
+                }
+
+                namespace TableProgress {
+
+                    type Progress$Properties = {
+                        total?: Long;
+                        done?: number;
+                    };
+
+                    /**
+                     * Constructs a new Progress.
+                     * @exports cockroach.sql.jobs.ImportDetails.TableProgress.Progress
+                     * @constructor
+                     * @param {cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties=} [properties] Properties to set
+                     */
+                    class Progress {
+
+                        /**
+                         * Constructs a new Progress.
+                         * @exports cockroach.sql.jobs.ImportDetails.TableProgress.Progress
+                         * @constructor
+                         * @param {cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties=} [properties] Properties to set
+                         */
+                        constructor(properties?: cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties);
+
+                        /**
+                         * Progress total.
+                         * @type {Long}
+                         */
+                        public total: Long;
+
+                        /**
+                         * Progress done.
+                         * @type {number}
+                         */
+                        public done: number;
+
+                        /**
+                         * Creates a new Progress instance using the specified properties.
+                         * @param {cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties=} [properties] Properties to set
+                         * @returns {cockroach.sql.jobs.ImportDetails.TableProgress.Progress} Progress instance
+                         */
+                        public static create(properties?: cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties): cockroach.sql.jobs.ImportDetails.TableProgress.Progress;
+
+                        /**
+                         * Encodes the specified Progress message. Does not implicitly {@link cockroach.sql.jobs.ImportDetails.TableProgress.Progress.verify|verify} messages.
+                         * @param {cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties} message Progress message or plain object to encode
+                         * @param {$protobuf.Writer} [writer] Writer to encode to
+                         * @returns {$protobuf.Writer} Writer
+                         */
+                        public static encode(message: cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                        /**
+                         * Encodes the specified Progress message, length delimited. Does not implicitly {@link cockroach.sql.jobs.ImportDetails.TableProgress.Progress.verify|verify} messages.
+                         * @param {cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties} message Progress message or plain object to encode
+                         * @param {$protobuf.Writer} [writer] Writer to encode to
+                         * @returns {$protobuf.Writer} Writer
+                         */
+                        public static encodeDelimited(message: cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                        /**
+                         * Decodes a Progress message from the specified reader or buffer.
+                         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+                         * @param {number} [length] Message length if known beforehand
+                         * @returns {cockroach.sql.jobs.ImportDetails.TableProgress.Progress} Progress
+                         * @throws {Error} If the payload is not a reader or valid buffer
+                         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                         */
+                        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): cockroach.sql.jobs.ImportDetails.TableProgress.Progress;
+
+                        /**
+                         * Decodes a Progress message from the specified reader or buffer, length delimited.
+                         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+                         * @returns {cockroach.sql.jobs.ImportDetails.TableProgress.Progress} Progress
+                         * @throws {Error} If the payload is not a reader or valid buffer
+                         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                         */
+                        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): cockroach.sql.jobs.ImportDetails.TableProgress.Progress;
+
+                        /**
+                         * Verifies a Progress message.
+                         * @param {Object.<string,*>} message Plain object to verify
+                         * @returns {?string} `null` if valid, otherwise the reason why it is not
+                         */
+                        public static verify(message: { [k: string]: any }): string;
+
+                        /**
+                         * Creates a Progress message from a plain object. Also converts values to their respective internal types.
+                         * @param {Object.<string,*>} object Plain object
+                         * @returns {cockroach.sql.jobs.ImportDetails.TableProgress.Progress} Progress
+                         */
+                        public static fromObject(object: { [k: string]: any }): cockroach.sql.jobs.ImportDetails.TableProgress.Progress;
+
+                        /**
+                         * Creates a Progress message from a plain object. Also converts values to their respective internal types.
+                         * This is an alias of {@link cockroach.sql.jobs.ImportDetails.TableProgress.Progress.fromObject}.
+                         * @function
+                         * @param {Object.<string,*>} object Plain object
+                         * @returns {cockroach.sql.jobs.ImportDetails.TableProgress.Progress} Progress
+                         */
+                        public static from(object: { [k: string]: any }): cockroach.sql.jobs.ImportDetails.TableProgress.Progress;
+
+                        /**
+                         * Creates a plain object from a Progress message. Also converts values to other types if specified.
+                         * @param {cockroach.sql.jobs.ImportDetails.TableProgress.Progress} message Progress
+                         * @param {$protobuf.ConversionOptions} [options] Conversion options
+                         * @returns {Object.<string,*>} Plain object
+                         */
+                        public static toObject(message: cockroach.sql.jobs.ImportDetails.TableProgress.Progress, options?: $protobuf.ConversionOptions): { [k: string]: any };
+
+                        /**
+                         * Creates a plain object from this Progress message. Also converts values to other types if specified.
+                         * @param {$protobuf.ConversionOptions} [options] Conversion options
+                         * @returns {Object.<string,*>} Plain object
+                         */
+                        public toObject(options?: $protobuf.ConversionOptions): { [k: string]: any };
+
+                        /**
+                         * Converts this Progress to JSON.
+                         * @returns {Object.<string,*>} JSON object
+                         */
+                        public toJSON(): { [k: string]: any };
+                    }
                 }
             }
 

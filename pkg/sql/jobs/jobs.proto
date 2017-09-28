@@ -64,7 +64,23 @@ message ImportDetails {
     roachpb.CSVOptions options = 3;
     string backup_path = 4;
   }
+  // TableProgress tracks progress of the distributed import.
+  message TableProgress {
+    message Progress {
+      // Total number of things that will be processed (bytes to read, KVs or SSTs to write).
+      int64 total = 1;
+      // Percent (between 0 and 1) complete of the total.
+      float done = 2;
+    }
+    // URIs tracks progress of reading each data file.
+    map <string, Progress> uris = 1 [(gogoproto.customname) = "URIs"];
+    // KVs tracks progress of writing temp KVs.
+    map <string, Progress> kvs = 2 [(gogoproto.customname) = "KVs"];
+    // SSTs tracks progress of writing final SSTs.
+    map <string, Progress> ssts = 3 [(gogoproto.customname) = "SSTs"];
+  }
   repeated Table tables = 1 [(gogoproto.nullable) = false];
+  repeated TableProgress table_progress = 2 [(gogoproto.nullable) = false];
 }
 
 message ResumeSpanList {

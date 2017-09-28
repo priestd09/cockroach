@@ -39846,6 +39846,7 @@ export const cockroach = $root.cockroach = (() => {
                  * @typedef cockroach.sql.jobs.ImportDetails$Properties
                  * @type {Object}
                  * @property {Array.<cockroach.sql.jobs.ImportDetails.Table$Properties>} [tables] ImportDetails tables.
+                 * @property {Array.<cockroach.sql.jobs.ImportDetails.TableProgress$Properties>} [table_progress] ImportDetails table_progress.
                  */
 
                 /**
@@ -39856,6 +39857,7 @@ export const cockroach = $root.cockroach = (() => {
                  */
                 function ImportDetails(properties) {
                     this.tables = [];
+                    this.table_progress = [];
                     if (properties)
                         for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
                             if (properties[keys[i]] != null)
@@ -39867,6 +39869,12 @@ export const cockroach = $root.cockroach = (() => {
                  * @type {Array.<cockroach.sql.jobs.ImportDetails.Table$Properties>}
                  */
                 ImportDetails.prototype.tables = $util.emptyArray;
+
+                /**
+                 * ImportDetails table_progress.
+                 * @type {Array.<cockroach.sql.jobs.ImportDetails.TableProgress$Properties>}
+                 */
+                ImportDetails.prototype.table_progress = $util.emptyArray;
 
                 /**
                  * Creates a new ImportDetails instance using the specified properties.
@@ -39889,6 +39897,9 @@ export const cockroach = $root.cockroach = (() => {
                     if (message.tables != null && message.tables.length)
                         for (let i = 0; i < message.tables.length; ++i)
                             $root.cockroach.sql.jobs.ImportDetails.Table.encode(message.tables[i], writer.uint32(/* id 1, wireType 2 =*/10).fork()).ldelim();
+                    if (message.table_progress != null && message.table_progress.length)
+                        for (let i = 0; i < message.table_progress.length; ++i)
+                            $root.cockroach.sql.jobs.ImportDetails.TableProgress.encode(message.table_progress[i], writer.uint32(/* id 2, wireType 2 =*/18).fork()).ldelim();
                     return writer;
                 };
 
@@ -39921,6 +39932,11 @@ export const cockroach = $root.cockroach = (() => {
                             if (!(message.tables && message.tables.length))
                                 message.tables = [];
                             message.tables.push($root.cockroach.sql.jobs.ImportDetails.Table.decode(reader, reader.uint32()));
+                            break;
+                        case 2:
+                            if (!(message.table_progress && message.table_progress.length))
+                                message.table_progress = [];
+                            message.table_progress.push($root.cockroach.sql.jobs.ImportDetails.TableProgress.decode(reader, reader.uint32()));
                             break;
                         default:
                             reader.skipType(tag & 7);
@@ -39960,6 +39976,15 @@ export const cockroach = $root.cockroach = (() => {
                                 return "tables." + error;
                         }
                     }
+                    if (message.table_progress != null && message.hasOwnProperty("table_progress")) {
+                        if (!Array.isArray(message.table_progress))
+                            return "table_progress: array expected";
+                        for (let i = 0; i < message.table_progress.length; ++i) {
+                            let error = $root.cockroach.sql.jobs.ImportDetails.TableProgress.verify(message.table_progress[i]);
+                            if (error)
+                                return "table_progress." + error;
+                        }
+                    }
                     return null;
                 };
 
@@ -39980,6 +40005,16 @@ export const cockroach = $root.cockroach = (() => {
                             if (typeof object.tables[i] !== "object")
                                 throw TypeError(".cockroach.sql.jobs.ImportDetails.tables: object expected");
                             message.tables[i] = $root.cockroach.sql.jobs.ImportDetails.Table.fromObject(object.tables[i]);
+                        }
+                    }
+                    if (object.table_progress) {
+                        if (!Array.isArray(object.table_progress))
+                            throw TypeError(".cockroach.sql.jobs.ImportDetails.table_progress: array expected");
+                        message.table_progress = [];
+                        for (let i = 0; i < object.table_progress.length; ++i) {
+                            if (typeof object.table_progress[i] !== "object")
+                                throw TypeError(".cockroach.sql.jobs.ImportDetails.table_progress: object expected");
+                            message.table_progress[i] = $root.cockroach.sql.jobs.ImportDetails.TableProgress.fromObject(object.table_progress[i]);
                         }
                     }
                     return message;
@@ -40004,12 +40039,19 @@ export const cockroach = $root.cockroach = (() => {
                     if (!options)
                         options = {};
                     let object = {};
-                    if (options.arrays || options.defaults)
+                    if (options.arrays || options.defaults) {
                         object.tables = [];
+                        object.table_progress = [];
+                    }
                     if (message.tables && message.tables.length) {
                         object.tables = [];
                         for (let j = 0; j < message.tables.length; ++j)
                             object.tables[j] = $root.cockroach.sql.jobs.ImportDetails.Table.toObject(message.tables[j], options);
+                    }
+                    if (message.table_progress && message.table_progress.length) {
+                        object.table_progress = [];
+                        for (let j = 0; j < message.table_progress.length; ++j)
+                            object.table_progress[j] = $root.cockroach.sql.jobs.ImportDetails.TableProgress.toObject(message.table_progress[j], options);
                     }
                     return object;
                 };
@@ -40291,6 +40333,512 @@ export const cockroach = $root.cockroach = (() => {
                     };
 
                     return Table;
+                })();
+
+                ImportDetails.TableProgress = (function() {
+
+                    /**
+                     * Properties of a TableProgress.
+                     * @typedef cockroach.sql.jobs.ImportDetails.TableProgress$Properties
+                     * @type {Object}
+                     * @property {Object.<string,cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties>} [uris] TableProgress uris.
+                     * @property {Object.<string,cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties>} [kvs] TableProgress kvs.
+                     * @property {Object.<string,cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties>} [ssts] TableProgress ssts.
+                     */
+
+                    /**
+                     * Constructs a new TableProgress.
+                     * @exports cockroach.sql.jobs.ImportDetails.TableProgress
+                     * @constructor
+                     * @param {cockroach.sql.jobs.ImportDetails.TableProgress$Properties=} [properties] Properties to set
+                     */
+                    function TableProgress(properties) {
+                        this.uris = {};
+                        this.kvs = {};
+                        this.ssts = {};
+                        if (properties)
+                            for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                                if (properties[keys[i]] != null)
+                                    this[keys[i]] = properties[keys[i]];
+                    }
+
+                    /**
+                     * TableProgress uris.
+                     * @type {Object.<string,cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties>}
+                     */
+                    TableProgress.prototype.uris = $util.emptyObject;
+
+                    /**
+                     * TableProgress kvs.
+                     * @type {Object.<string,cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties>}
+                     */
+                    TableProgress.prototype.kvs = $util.emptyObject;
+
+                    /**
+                     * TableProgress ssts.
+                     * @type {Object.<string,cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties>}
+                     */
+                    TableProgress.prototype.ssts = $util.emptyObject;
+
+                    /**
+                     * Creates a new TableProgress instance using the specified properties.
+                     * @param {cockroach.sql.jobs.ImportDetails.TableProgress$Properties=} [properties] Properties to set
+                     * @returns {cockroach.sql.jobs.ImportDetails.TableProgress} TableProgress instance
+                     */
+                    TableProgress.create = function create(properties) {
+                        return new TableProgress(properties);
+                    };
+
+                    /**
+                     * Encodes the specified TableProgress message. Does not implicitly {@link cockroach.sql.jobs.ImportDetails.TableProgress.verify|verify} messages.
+                     * @param {cockroach.sql.jobs.ImportDetails.TableProgress$Properties} message TableProgress message or plain object to encode
+                     * @param {$protobuf.Writer} [writer] Writer to encode to
+                     * @returns {$protobuf.Writer} Writer
+                     */
+                    TableProgress.encode = function encode(message, writer) {
+                        if (!writer)
+                            writer = $Writer.create();
+                        if (message.uris != null && message.hasOwnProperty("uris"))
+                            for (let keys = Object.keys(message.uris), i = 0; i < keys.length; ++i) {
+                                writer.uint32(/* id 1, wireType 2 =*/10).fork().uint32(/* id 1, wireType 2 =*/10).string(keys[i]);
+                                $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress.encode(message.uris[keys[i]], writer.uint32(/* id 2, wireType 2 =*/18).fork()).ldelim().ldelim();
+                            }
+                        if (message.kvs != null && message.hasOwnProperty("kvs"))
+                            for (let keys = Object.keys(message.kvs), i = 0; i < keys.length; ++i) {
+                                writer.uint32(/* id 2, wireType 2 =*/18).fork().uint32(/* id 1, wireType 2 =*/10).string(keys[i]);
+                                $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress.encode(message.kvs[keys[i]], writer.uint32(/* id 2, wireType 2 =*/18).fork()).ldelim().ldelim();
+                            }
+                        if (message.ssts != null && message.hasOwnProperty("ssts"))
+                            for (let keys = Object.keys(message.ssts), i = 0; i < keys.length; ++i) {
+                                writer.uint32(/* id 3, wireType 2 =*/26).fork().uint32(/* id 1, wireType 2 =*/10).string(keys[i]);
+                                $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress.encode(message.ssts[keys[i]], writer.uint32(/* id 2, wireType 2 =*/18).fork()).ldelim().ldelim();
+                            }
+                        return writer;
+                    };
+
+                    /**
+                     * Encodes the specified TableProgress message, length delimited. Does not implicitly {@link cockroach.sql.jobs.ImportDetails.TableProgress.verify|verify} messages.
+                     * @param {cockroach.sql.jobs.ImportDetails.TableProgress$Properties} message TableProgress message or plain object to encode
+                     * @param {$protobuf.Writer} [writer] Writer to encode to
+                     * @returns {$protobuf.Writer} Writer
+                     */
+                    TableProgress.encodeDelimited = function encodeDelimited(message, writer) {
+                        return this.encode(message, writer).ldelim();
+                    };
+
+                    /**
+                     * Decodes a TableProgress message from the specified reader or buffer.
+                     * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+                     * @param {number} [length] Message length if known beforehand
+                     * @returns {cockroach.sql.jobs.ImportDetails.TableProgress} TableProgress
+                     * @throws {Error} If the payload is not a reader or valid buffer
+                     * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                     */
+                    TableProgress.decode = function decode(reader, length) {
+                        if (!(reader instanceof $Reader))
+                            reader = $Reader.create(reader);
+                        let end = length === undefined ? reader.len : reader.pos + length, message = new $root.cockroach.sql.jobs.ImportDetails.TableProgress(), key;
+                        while (reader.pos < end) {
+                            let tag = reader.uint32();
+                            switch (tag >>> 3) {
+                            case 1:
+                                reader.skip().pos++;
+                                if (message.uris === $util.emptyObject)
+                                    message.uris = {};
+                                key = reader.string();
+                                reader.pos++;
+                                message.uris[key] = $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress.decode(reader, reader.uint32());
+                                break;
+                            case 2:
+                                reader.skip().pos++;
+                                if (message.kvs === $util.emptyObject)
+                                    message.kvs = {};
+                                key = reader.string();
+                                reader.pos++;
+                                message.kvs[key] = $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress.decode(reader, reader.uint32());
+                                break;
+                            case 3:
+                                reader.skip().pos++;
+                                if (message.ssts === $util.emptyObject)
+                                    message.ssts = {};
+                                key = reader.string();
+                                reader.pos++;
+                                message.ssts[key] = $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress.decode(reader, reader.uint32());
+                                break;
+                            default:
+                                reader.skipType(tag & 7);
+                                break;
+                            }
+                        }
+                        return message;
+                    };
+
+                    /**
+                     * Decodes a TableProgress message from the specified reader or buffer, length delimited.
+                     * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+                     * @returns {cockroach.sql.jobs.ImportDetails.TableProgress} TableProgress
+                     * @throws {Error} If the payload is not a reader or valid buffer
+                     * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                     */
+                    TableProgress.decodeDelimited = function decodeDelimited(reader) {
+                        if (!(reader instanceof $Reader))
+                            reader = $Reader(reader);
+                        return this.decode(reader, reader.uint32());
+                    };
+
+                    /**
+                     * Verifies a TableProgress message.
+                     * @param {Object.<string,*>} message Plain object to verify
+                     * @returns {?string} `null` if valid, otherwise the reason why it is not
+                     */
+                    TableProgress.verify = function verify(message) {
+                        if (typeof message !== "object" || message === null)
+                            return "object expected";
+                        if (message.uris != null && message.hasOwnProperty("uris")) {
+                            if (!$util.isObject(message.uris))
+                                return "uris: object expected";
+                            let key = Object.keys(message.uris);
+                            for (let i = 0; i < key.length; ++i) {
+                                let error = $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress.verify(message.uris[key[i]]);
+                                if (error)
+                                    return "uris." + error;
+                            }
+                        }
+                        if (message.kvs != null && message.hasOwnProperty("kvs")) {
+                            if (!$util.isObject(message.kvs))
+                                return "kvs: object expected";
+                            let key = Object.keys(message.kvs);
+                            for (let i = 0; i < key.length; ++i) {
+                                let error = $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress.verify(message.kvs[key[i]]);
+                                if (error)
+                                    return "kvs." + error;
+                            }
+                        }
+                        if (message.ssts != null && message.hasOwnProperty("ssts")) {
+                            if (!$util.isObject(message.ssts))
+                                return "ssts: object expected";
+                            let key = Object.keys(message.ssts);
+                            for (let i = 0; i < key.length; ++i) {
+                                let error = $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress.verify(message.ssts[key[i]]);
+                                if (error)
+                                    return "ssts." + error;
+                            }
+                        }
+                        return null;
+                    };
+
+                    /**
+                     * Creates a TableProgress message from a plain object. Also converts values to their respective internal types.
+                     * @param {Object.<string,*>} object Plain object
+                     * @returns {cockroach.sql.jobs.ImportDetails.TableProgress} TableProgress
+                     */
+                    TableProgress.fromObject = function fromObject(object) {
+                        if (object instanceof $root.cockroach.sql.jobs.ImportDetails.TableProgress)
+                            return object;
+                        let message = new $root.cockroach.sql.jobs.ImportDetails.TableProgress();
+                        if (object.uris) {
+                            if (typeof object.uris !== "object")
+                                throw TypeError(".cockroach.sql.jobs.ImportDetails.TableProgress.uris: object expected");
+                            message.uris = {};
+                            for (let keys = Object.keys(object.uris), i = 0; i < keys.length; ++i) {
+                                if (typeof object.uris[keys[i]] !== "object")
+                                    throw TypeError(".cockroach.sql.jobs.ImportDetails.TableProgress.uris: object expected");
+                                message.uris[keys[i]] = $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress.fromObject(object.uris[keys[i]]);
+                            }
+                        }
+                        if (object.kvs) {
+                            if (typeof object.kvs !== "object")
+                                throw TypeError(".cockroach.sql.jobs.ImportDetails.TableProgress.kvs: object expected");
+                            message.kvs = {};
+                            for (let keys = Object.keys(object.kvs), i = 0; i < keys.length; ++i) {
+                                if (typeof object.kvs[keys[i]] !== "object")
+                                    throw TypeError(".cockroach.sql.jobs.ImportDetails.TableProgress.kvs: object expected");
+                                message.kvs[keys[i]] = $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress.fromObject(object.kvs[keys[i]]);
+                            }
+                        }
+                        if (object.ssts) {
+                            if (typeof object.ssts !== "object")
+                                throw TypeError(".cockroach.sql.jobs.ImportDetails.TableProgress.ssts: object expected");
+                            message.ssts = {};
+                            for (let keys = Object.keys(object.ssts), i = 0; i < keys.length; ++i) {
+                                if (typeof object.ssts[keys[i]] !== "object")
+                                    throw TypeError(".cockroach.sql.jobs.ImportDetails.TableProgress.ssts: object expected");
+                                message.ssts[keys[i]] = $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress.fromObject(object.ssts[keys[i]]);
+                            }
+                        }
+                        return message;
+                    };
+
+                    /**
+                     * Creates a TableProgress message from a plain object. Also converts values to their respective internal types.
+                     * This is an alias of {@link cockroach.sql.jobs.ImportDetails.TableProgress.fromObject}.
+                     * @function
+                     * @param {Object.<string,*>} object Plain object
+                     * @returns {cockroach.sql.jobs.ImportDetails.TableProgress} TableProgress
+                     */
+                    TableProgress.from = TableProgress.fromObject;
+
+                    /**
+                     * Creates a plain object from a TableProgress message. Also converts values to other types if specified.
+                     * @param {cockroach.sql.jobs.ImportDetails.TableProgress} message TableProgress
+                     * @param {$protobuf.ConversionOptions} [options] Conversion options
+                     * @returns {Object.<string,*>} Plain object
+                     */
+                    TableProgress.toObject = function toObject(message, options) {
+                        if (!options)
+                            options = {};
+                        let object = {};
+                        if (options.objects || options.defaults) {
+                            object.uris = {};
+                            object.kvs = {};
+                            object.ssts = {};
+                        }
+                        let keys2;
+                        if (message.uris && (keys2 = Object.keys(message.uris)).length) {
+                            object.uris = {};
+                            for (let j = 0; j < keys2.length; ++j)
+                                object.uris[keys2[j]] = $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress.toObject(message.uris[keys2[j]], options);
+                        }
+                        if (message.kvs && (keys2 = Object.keys(message.kvs)).length) {
+                            object.kvs = {};
+                            for (let j = 0; j < keys2.length; ++j)
+                                object.kvs[keys2[j]] = $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress.toObject(message.kvs[keys2[j]], options);
+                        }
+                        if (message.ssts && (keys2 = Object.keys(message.ssts)).length) {
+                            object.ssts = {};
+                            for (let j = 0; j < keys2.length; ++j)
+                                object.ssts[keys2[j]] = $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress.toObject(message.ssts[keys2[j]], options);
+                        }
+                        return object;
+                    };
+
+                    /**
+                     * Creates a plain object from this TableProgress message. Also converts values to other types if specified.
+                     * @param {$protobuf.ConversionOptions} [options] Conversion options
+                     * @returns {Object.<string,*>} Plain object
+                     */
+                    TableProgress.prototype.toObject = function toObject(options) {
+                        return this.constructor.toObject(this, options);
+                    };
+
+                    /**
+                     * Converts this TableProgress to JSON.
+                     * @returns {Object.<string,*>} JSON object
+                     */
+                    TableProgress.prototype.toJSON = function toJSON() {
+                        return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+                    };
+
+                    TableProgress.Progress = (function() {
+
+                        /**
+                         * Properties of a Progress.
+                         * @typedef cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties
+                         * @type {Object}
+                         * @property {Long} [total] Progress total.
+                         * @property {number} [done] Progress done.
+                         */
+
+                        /**
+                         * Constructs a new Progress.
+                         * @exports cockroach.sql.jobs.ImportDetails.TableProgress.Progress
+                         * @constructor
+                         * @param {cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties=} [properties] Properties to set
+                         */
+                        function Progress(properties) {
+                            if (properties)
+                                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                                    if (properties[keys[i]] != null)
+                                        this[keys[i]] = properties[keys[i]];
+                        }
+
+                        /**
+                         * Progress total.
+                         * @type {Long}
+                         */
+                        Progress.prototype.total = $util.Long ? $util.Long.fromBits(0,0,false) : 0;
+
+                        /**
+                         * Progress done.
+                         * @type {number}
+                         */
+                        Progress.prototype.done = 0;
+
+                        /**
+                         * Creates a new Progress instance using the specified properties.
+                         * @param {cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties=} [properties] Properties to set
+                         * @returns {cockroach.sql.jobs.ImportDetails.TableProgress.Progress} Progress instance
+                         */
+                        Progress.create = function create(properties) {
+                            return new Progress(properties);
+                        };
+
+                        /**
+                         * Encodes the specified Progress message. Does not implicitly {@link cockroach.sql.jobs.ImportDetails.TableProgress.Progress.verify|verify} messages.
+                         * @param {cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties} message Progress message or plain object to encode
+                         * @param {$protobuf.Writer} [writer] Writer to encode to
+                         * @returns {$protobuf.Writer} Writer
+                         */
+                        Progress.encode = function encode(message, writer) {
+                            if (!writer)
+                                writer = $Writer.create();
+                            if (message.total != null && message.hasOwnProperty("total"))
+                                writer.uint32(/* id 1, wireType 0 =*/8).int64(message.total);
+                            if (message.done != null && message.hasOwnProperty("done"))
+                                writer.uint32(/* id 2, wireType 5 =*/21).float(message.done);
+                            return writer;
+                        };
+
+                        /**
+                         * Encodes the specified Progress message, length delimited. Does not implicitly {@link cockroach.sql.jobs.ImportDetails.TableProgress.Progress.verify|verify} messages.
+                         * @param {cockroach.sql.jobs.ImportDetails.TableProgress.Progress$Properties} message Progress message or plain object to encode
+                         * @param {$protobuf.Writer} [writer] Writer to encode to
+                         * @returns {$protobuf.Writer} Writer
+                         */
+                        Progress.encodeDelimited = function encodeDelimited(message, writer) {
+                            return this.encode(message, writer).ldelim();
+                        };
+
+                        /**
+                         * Decodes a Progress message from the specified reader or buffer.
+                         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+                         * @param {number} [length] Message length if known beforehand
+                         * @returns {cockroach.sql.jobs.ImportDetails.TableProgress.Progress} Progress
+                         * @throws {Error} If the payload is not a reader or valid buffer
+                         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                         */
+                        Progress.decode = function decode(reader, length) {
+                            if (!(reader instanceof $Reader))
+                                reader = $Reader.create(reader);
+                            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress();
+                            while (reader.pos < end) {
+                                let tag = reader.uint32();
+                                switch (tag >>> 3) {
+                                case 1:
+                                    message.total = reader.int64();
+                                    break;
+                                case 2:
+                                    message.done = reader.float();
+                                    break;
+                                default:
+                                    reader.skipType(tag & 7);
+                                    break;
+                                }
+                            }
+                            return message;
+                        };
+
+                        /**
+                         * Decodes a Progress message from the specified reader or buffer, length delimited.
+                         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+                         * @returns {cockroach.sql.jobs.ImportDetails.TableProgress.Progress} Progress
+                         * @throws {Error} If the payload is not a reader or valid buffer
+                         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                         */
+                        Progress.decodeDelimited = function decodeDelimited(reader) {
+                            if (!(reader instanceof $Reader))
+                                reader = $Reader(reader);
+                            return this.decode(reader, reader.uint32());
+                        };
+
+                        /**
+                         * Verifies a Progress message.
+                         * @param {Object.<string,*>} message Plain object to verify
+                         * @returns {?string} `null` if valid, otherwise the reason why it is not
+                         */
+                        Progress.verify = function verify(message) {
+                            if (typeof message !== "object" || message === null)
+                                return "object expected";
+                            if (message.total != null && message.hasOwnProperty("total"))
+                                if (!$util.isInteger(message.total) && !(message.total && $util.isInteger(message.total.low) && $util.isInteger(message.total.high)))
+                                    return "total: integer|Long expected";
+                            if (message.done != null && message.hasOwnProperty("done"))
+                                if (typeof message.done !== "number")
+                                    return "done: number expected";
+                            return null;
+                        };
+
+                        /**
+                         * Creates a Progress message from a plain object. Also converts values to their respective internal types.
+                         * @param {Object.<string,*>} object Plain object
+                         * @returns {cockroach.sql.jobs.ImportDetails.TableProgress.Progress} Progress
+                         */
+                        Progress.fromObject = function fromObject(object) {
+                            if (object instanceof $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress)
+                                return object;
+                            let message = new $root.cockroach.sql.jobs.ImportDetails.TableProgress.Progress();
+                            if (object.total != null)
+                                if ($util.Long)
+                                    (message.total = $util.Long.fromValue(object.total)).unsigned = false;
+                                else if (typeof object.total === "string")
+                                    message.total = parseInt(object.total, 10);
+                                else if (typeof object.total === "number")
+                                    message.total = object.total;
+                                else if (typeof object.total === "object")
+                                    message.total = new $util.LongBits(object.total.low >>> 0, object.total.high >>> 0).toNumber();
+                            if (object.done != null)
+                                message.done = Number(object.done);
+                            return message;
+                        };
+
+                        /**
+                         * Creates a Progress message from a plain object. Also converts values to their respective internal types.
+                         * This is an alias of {@link cockroach.sql.jobs.ImportDetails.TableProgress.Progress.fromObject}.
+                         * @function
+                         * @param {Object.<string,*>} object Plain object
+                         * @returns {cockroach.sql.jobs.ImportDetails.TableProgress.Progress} Progress
+                         */
+                        Progress.from = Progress.fromObject;
+
+                        /**
+                         * Creates a plain object from a Progress message. Also converts values to other types if specified.
+                         * @param {cockroach.sql.jobs.ImportDetails.TableProgress.Progress} message Progress
+                         * @param {$protobuf.ConversionOptions} [options] Conversion options
+                         * @returns {Object.<string,*>} Plain object
+                         */
+                        Progress.toObject = function toObject(message, options) {
+                            if (!options)
+                                options = {};
+                            let object = {};
+                            if (options.defaults) {
+                                if ($util.Long) {
+                                    let long = new $util.Long(0, 0, false);
+                                    object.total = options.longs === String ? long.toString() : options.longs === Number ? long.toNumber() : long;
+                                } else
+                                    object.total = options.longs === String ? "0" : 0;
+                                object.done = 0;
+                            }
+                            if (message.total != null && message.hasOwnProperty("total"))
+                                if (typeof message.total === "number")
+                                    object.total = options.longs === String ? String(message.total) : message.total;
+                                else
+                                    object.total = options.longs === String ? $util.Long.prototype.toString.call(message.total) : options.longs === Number ? new $util.LongBits(message.total.low >>> 0, message.total.high >>> 0).toNumber() : message.total;
+                            if (message.done != null && message.hasOwnProperty("done"))
+                                object.done = message.done;
+                            return object;
+                        };
+
+                        /**
+                         * Creates a plain object from this Progress message. Also converts values to other types if specified.
+                         * @param {$protobuf.ConversionOptions} [options] Conversion options
+                         * @returns {Object.<string,*>} Plain object
+                         */
+                        Progress.prototype.toObject = function toObject(options) {
+                            return this.constructor.toObject(this, options);
+                        };
+
+                        /**
+                         * Converts this Progress to JSON.
+                         * @returns {Object.<string,*>} JSON object
+                         */
+                        Progress.prototype.toJSON = function toJSON() {
+                            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+                        };
+
+                        return Progress;
+                    })();
+
+                    return TableProgress;
                 })();
 
                 return ImportDetails;
