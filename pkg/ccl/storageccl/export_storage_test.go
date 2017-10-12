@@ -49,6 +49,12 @@ func init() {
 	if err := up.Set(cloudstorageGSDefaultKey, os.Getenv("GS_JSONKEY"), gcsDefault.Typ()); err != nil {
 		panic(err)
 	}
+	if err := up.Set(cloudstorageS3DefaultID, os.Getenv("AWS_ACCESS_KEY_ID", s3DefaultID.Typ()); err != nil {
+		panic(err)
+	}
+	if err := up.Set(cloudstorageS3DefaultSecret, os.Getenv("AWS_SECRET_ACCESS_KEY", s3DefaultSecret.Typ()); err != nil {
+		panic(err)
+	}
 }
 
 func storeFromURI(ctx context.Context, t *testing.T, uri string) ExportStorage {
@@ -344,10 +350,10 @@ func TestPutHttp(t *testing.T) {
 func TestPutS3(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	creds, err := credentials.NewEnvCredentials().Get()
-	if err != nil {
-		t.Skip("No AWS credentials")
-	}
+	
+	hasS3Creds := creds != nil
+	up := testSettings.MakeUpdater()
+	
 	bucket := os.Getenv("AWS_S3_BUCKET")
 	if bucket == "" {
 		t.Skip("AWS_S3_BUCKET env var must be set")
@@ -356,6 +362,9 @@ func TestPutS3(t *testing.T) {
 	// TODO(dt): this prevents leaking an http conn goroutine.
 	http.DefaultTransport.(*http.Transport).DisableKeepAlives = true
 
+
+	
+	t.Run("url", func(t *testing.T) {	
 	testExportStore(t,
 		fmt.Sprintf(
 			"s3://%s/%s?%s=%s&%s=%s",
@@ -365,6 +374,20 @@ func TestPutS3(t *testing.T) {
 		),
 		false,
 	)
+	})
+	t.Run("empty", func(t *testing.T) {
+		testExportStore(t, fmt.Sprintf("s3://%s/%s", bucket, "backup-test-empty"), false)
+	})
+	t.Run("default", func(t *testing.T) {
+		testExportStore(t, fmt.Sprintf("s3://%s/%s?%s=%s", bucket, "backup-test-default", AuthParam, authParamDefault), false)
+	})
+	t.Run("implicit", func(t *testing.T) {
+		// Only test these if they exist.
+		if _, err := credentials.NewEnvCredentials().Get(); err != nil {
+			t.Skip(err)
+		}
+		testExportStore(t, fmt.Sprintf("s3://%s/%s?%s=%s", bucket, "backup-test-implicit", AuthParam, authParamImplicit), false)
+	})
 }
 
 func TestPutGoogleCloud(t *testing.T) {

@@ -26,6 +26,7 @@ import (
 	gcs "cloud.google.com/go/storage"
 	azr "github.com/Azure/azure-sdk-for-go/storage"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
@@ -57,12 +58,27 @@ const (
 	authParamImplicit = "implicit"
 	authParamDefault  = "default"
 
-	cloudstoragePrefix       = "cloudstorage"
-	cloudstorageGS           = cloudstoragePrefix + ".gs"
-	cloudstorageDefault      = ".default"
-	cloudstorageKey          = ".key"
-	cloudstorageGSDefault    = cloudstorageGS + cloudstorageDefault
-	cloudstorageGSDefaultKey = cloudstorageGSDefault + cloudstorageKey
+	schemeGS    = "gs"
+	schemeS3    = "s3"
+	schemeAzure = "azure"
+
+	cloudstoragePrefix           = "cloudstorage"
+	cloudstorageDefault          = ".default"
+	cloudstorageKey              = ".key"
+	cloudstorageID               = ".id"
+	cloudstorageName             = ".name"
+	cloudstorageSecret           = ".secret"
+	cloudstorageGS               = cloudstoragePrefix + "." + schemeGS
+	cloudstorageGSDefault        = cloudstorageGS + cloudstorageDefault
+	cloudstorageGSDefaultKey     = cloudstorageGSDefault + cloudstorageKey
+	cloudstorageS3               = cloudstoragePrefix + "." + schemeS3
+	cloudstorageS3Default        = cloudstorageS3 + cloudstorageDefault
+	cloudstorageS3DefaultID      = cloudstorageS3Default + cloudstorageID
+	cloudstorageS3DefaultSecret  = cloudstorageS3Default + cloudstorageSecret
+	cloudstorageAzure            = cloudstoragePrefix + "." + schemeAzure
+	cloudstorageAzureDefault     = cloudstorageAzure + cloudstorageDefault
+	cloudstorageAzureDefaultName = cloudstorageAzureDefault + cloudstorageName
+	cloudstorageAzureDefaultKey  = cloudstorageAzureDefault + cloudstorageKey
 )
 
 // ExportStorageConfFromURI generates an ExportStorage config from a URI string.
@@ -73,7 +89,7 @@ func ExportStorageConfFromURI(path string) (roachpb.ExportStorage, error) {
 		return conf, err
 	}
 	switch uri.Scheme {
-	case "s3":
+	case schemeS3:
 		conf.Provider = roachpb.ExportStorageProvider_S3
 		conf.S3Config = &roachpb.ExportStorage_S3{
 			Bucket:    uri.Host,
@@ -88,7 +104,7 @@ func ExportStorageConfFromURI(path string) (roachpb.ExportStorage, error) {
 			return conf, errors.Errorf("s3 uri missing %q parameter", S3SecretParam)
 		}
 		conf.S3Config.Prefix = strings.TrimLeft(conf.S3Config.Prefix, "/")
-	case "gs":
+	case schemeGS:
 		conf.Provider = roachpb.ExportStorageProvider_GoogleCloud
 		conf.GoogleCloudConfig = &roachpb.ExportStorage_GCS{
 			Bucket: uri.Host,
@@ -96,7 +112,7 @@ func ExportStorageConfFromURI(path string) (roachpb.ExportStorage, error) {
 			Auth:   uri.Query().Get(AuthParam),
 		}
 		conf.GoogleCloudConfig.Prefix = strings.TrimLeft(conf.GoogleCloudConfig.Prefix, "/")
-	case "azure":
+	case schemeAzure:
 		conf.Provider = roachpb.ExportStorageProvider_Azure
 		conf.AzureConfig = &roachpb.ExportStorage_Azure{
 			Container:   uri.Host,
@@ -149,11 +165,11 @@ func MakeExportStorage(
 	case roachpb.ExportStorageProvider_Http:
 		return makeHTTPStorage(dest.HttpPath.BaseUri)
 	case roachpb.ExportStorageProvider_S3:
-		return makeS3Storage(ctx, dest.S3Config)
+		return makeS3Storage(ctx, dest.S3Config, settings)
 	case roachpb.ExportStorageProvider_GoogleCloud:
 		return makeGCSStorage(ctx, dest.GoogleCloudConfig, settings)
 	case roachpb.ExportStorageProvider_Azure:
-		return makeAzureStorage(dest.AzureConfig)
+		return makeAzureStorage(dest.AzureConfig, settings)
 	}
 	return nil, errors.Errorf("unsupported export destination type: %s", dest.Provider.String())
 }
@@ -193,6 +209,16 @@ var (
 	gcsDefault = settings.RegisterStringSetting(
 		cloudstorageGSDefaultKey,
 		"if set, JSON key to use during Google Cloud Storage operations",
+		"",
+	)
+	s3DefaultID = settings.RegisterStringSetting(
+		cloudstorageS3DefaultID,
+		"if set, S3 access key ID to use during operations",
+		"",
+	)
+	s3DefaultSecret = settings.RegisterStringSetting(
+		cloudstorageS3DefaultSecret,
+		"if set, S3 secret access key to use during operations",
 		"",
 	)
 )
@@ -369,11 +395,95 @@ type s3Storage struct {
 
 var _ ExportStorage = &s3Storage{}
 
-func makeS3Storage(ctx context.Context, conf *roachpb.ExportStorage_S3) (ExportStorage, error) {
+func makeS3Storage(ctx context.Context, conf *roachpb.ExportStorage_S3, settings *cluster.Settings) (ExportStorage, error) {
 	if conf == nil {
 		return nil, errors.Errorf("s3 upload requested but info missing")
 	}
-	sess, err := session.NewSession(conf.Keys())
+
+	/*
+	   There are many sources for credentials:
+	   - key id or secret in the URL
+	   - key id or secret in cluster settings
+	   - AWS environment variables
+
+	   In order, check:
+	   1. If either key id or secret is in URL and AUTH URL param is not empty, error.
+	   2. If either key id or secret in URL is specified, use them. If only one is specified in URL fetch the other from cluster settings. If one is still empty, error.
+	   3. If AUTH param is implicit, use env.
+	   4. If AUTH param is default, use cluster settings and make sure both are present, error if not.
+	   5. Else (AUTH is empty), use cluster settings only if both are present, otherwise use env.
+	*/
+
+	var creds *credentials.Credentials
+	akid := conf.AccessKey
+	secret := conf.Secret
+	if akid != "" || secret != "" {
+		if conf.Auth != "" {
+			return nil, errors.Errorf("cannot specify %s param if key id or secret also specified", AuthParam)
+		}
+		if settings != nil {
+			if akid == "" {
+				akid = s3DefaultID.Get(&settings.SV)
+				if akid == "" {
+					return nil, errors.Errorf("only %s specified in URL, but cluster setting %s not present", S3AccessKeyParam, cloudstorageS3DefaultSecret)
+				}
+			}
+			if secret == "" {
+				secret = s3DefaultSecret.Get(&settings.SV)
+				if secret == "" {
+					return nil, errors.Errorf("only %s specified in URL, but cluster setting %s not present", S3SecretParam, cloudstorageS3DefaultID)
+				}
+			}
+		}
+		if akid == "" || secret == "" {
+			return nil, errors.Errorf("expected both %s and %s in URL", S3AccessKeyParam, S3SecretParam)
+		}
+		creds = credentials.NewStaticCredentials(akid, secret, "")
+	} else {
+		switch conf.Auth {
+		case "", authParamDefault:
+			if settings != nil {
+				akid = s3DefaultID.Get(&settings.SV)
+				secret = s3DefaultSecret.Get(&settings.SV)
+			}
+			// We expect a key to be present if default is specified.
+			if conf.Auth == authParamDefault && (akid == "" || secret == "") {
+				return nil, errors.Errorf("expected settings values for %s and %s", s3DefaultID, s3DefaultSecret)
+			}
+			if akid == "" || secret == "" {
+				creds = credentials.NewEnvCredentials()
+			} else {
+				creds = credentials.NewStaticCredentials(akid, secret, "")
+			}
+		case authParamImplicit:
+			creds = credentials.NewEnvCredentials()
+		default:
+			return nil, errors.Errorf("unsupported value %s for %s", conf.Auth, AuthParam)
+		}
+	}
+
+	switch conf.Auth {
+	case "", authParamDefault:
+		// We expect a key to be present if default is specified.
+		if conf.Auth == authParamDefault && (akid == "" || secret == "") {
+			return nil, errors.Errorf("expected settings value for %s and %s", cloudstorageS3DefaultID, cloudstorageS3DefaultSecret)
+		}
+		if akid != "" && secret != "" {
+			creds = credentials.NewStaticCredentials(akid, secret, "")
+		} else if akid != "" || secret != "" {
+			return nil, errors.Errorf("only one of ")
+		}
+	case authParamImplicit:
+		// ignore
+	default:
+		return nil, errors.Errorf("unsupported value %s for %s", conf.Auth, AuthParam)
+	}
+	if akid != "" && secret != "" {
+		creds = credentials.NewStaticCredentials(akid, secret, "")
+	} else if akid != "" || secret != "" {
+		return nil, errors.New("both S3 access key ID and secret must be present")
+	}
+	sess, err := session.NewSession(&aws.Config{Credentials: creds})
 	if err != nil {
 		return nil, errors.Wrap(err, "new aws session")
 	}
@@ -552,7 +662,7 @@ type azureStorage struct {
 
 var _ ExportStorage = &azureStorage{}
 
-func makeAzureStorage(conf *roachpb.ExportStorage_Azure) (ExportStorage, error) {
+func makeAzureStorage(conf *roachpb.ExportStorage_Azure, settings *cluster.Settings) (ExportStorage, error) {
 	if conf == nil {
 		return nil, errors.Errorf("azure upload requested but info missing")
 	}
