@@ -2417,6 +2417,9 @@ func EvalAsOfTimestamp(
 		ts.WallTime = int64(*d)
 	case *parser.DDecimal:
 		ts, convErr = decimalToHLC(&d.Decimal)
+	case *parser.DInterval:
+		ts.WallTime = duration.Add(max.GoTime(), d.Duration).UnixNano()
+		ts.Logical = 0
 	default:
 		convErr = errors.Errorf("AS OF SYSTEM TIME: expected timestamp, got %s (%T)", d.ResolvedType(), d)
 	}

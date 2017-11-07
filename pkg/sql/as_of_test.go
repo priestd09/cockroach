@@ -117,6 +117,9 @@ func TestAsOfTime(t *testing.T) {
 	if err := db.QueryRow("SELECT a FROM d.t AS OF SYSTEM TIME '2200-01-01'").Scan(&i); !testutils.IsError(err, "pq: AS OF SYSTEM TIME: cannot specify timestamp in the future") {
 		t.Fatal(err)
 	}
+	if err := db.QueryRow("SELECT a FROM d.t AS OF SYSTEM TIME '1ns'::interval").Scan(&i); !testutils.IsError(err, "pq: AS OF SYSTEM TIME: cannot specify timestamp in the future") {
+		t.Fatal(err)
+	}
 
 	// Verify queries with positive scale work properly.
 	if _, err := db.Query("SELECT a FROM d.t AS OF SYSTEM TIME 1e1"); !testutils.IsError(err, `pq: database "d" does not exist`) {
@@ -135,6 +138,11 @@ func TestAsOfTime(t *testing.T) {
 
 	// Verify logical parts parse with == 10 digits.
 	if _, err := db.Query("SELECT a FROM d.t AS OF SYSTEM TIME 1.1234567890"); !testutils.IsError(err, `pq: database "d" does not exist`) {
+		t.Fatal(err)
+	}
+
+	// Negative interval is the same as now() - interval.
+	if _, err := db.Query("SELECT a FROM d.t AS OF SYSTEM TIME '-1h'::interval"); !testutils.IsError(err, `pq: database "d" does not exist`) {
 		t.Fatal(err)
 	}
 
