@@ -217,97 +217,160 @@ func evalImport(ctx context.Context, cArgs batcheval.CommandArgs) (*roachpb.Impo
 	defer batcher.Close()
 
 	g, gCtx := errgroup.WithContext(ctx)
+	done := gCtx.Done()
+	mvccCh := make(chan []engine.MVCCKeyValue, 100)
+	rewrittenCh := make(chan []engine.MVCCKeyValue, 100)
 	startKeyMVCC, endKeyMVCC := engine.MVCCKey{Key: args.DataSpan.Key}, engine.MVCCKey{Key: args.DataSpan.EndKey}
-	iter := engineccl.MakeMultiIterator(iters)
-	defer iter.Close()
-	var keyScratch, valueScratch []byte
 
-	for iter.Seek(startKeyMVCC); ; {
-		ok, err := iter.Valid()
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			break
-		}
+	g.Go(func() error {
+		iter := engineccl.MakeMultiIterator(iters)
+		defer iter.Close()
+		defer close(mvccCh)
+		var k engine.MVCCKey
+		kvs := make([]engine.MVCCKeyValue, 0, 1000)
+		for iter.Seek(startKeyMVCC); ; iter.NextKey() {
+			ok, err := iter.Valid()
+			if err != nil {
+				return err
+			}
+			if !ok {
+				break
+			}
+			k = iter.UnsafeKey()
 
-		if args.EndTime != (hlc.Timestamp{}) {
-			// TODO(dan): If we have to skip past a lot of versions to find the
-			// latest one before args.EndTime, then this could be slow.
-			if args.EndTime.Less(iter.UnsafeKey().Timestamp) {
-				iter.Next()
+			if args.EndTime != (hlc.Timestamp{}) {
+				// TODO(dan): If we have to skip past a lot of versions to find the
+				// latest one before args.EndTime, then this could be slow.
+				if args.EndTime.Less(k.Timestamp) {
+					iter.Next()
+					continue
+				}
+			}
+
+			if !ok || !k.Less(endKeyMVCC) {
+				break
+			}
+			if len(iter.UnsafeValue()) == 0 {
+				// Value is deleted.
 				continue
 			}
-		}
 
-		if !ok || !iter.UnsafeKey().Less(endKeyMVCC) {
-			break
-		}
-		if len(iter.UnsafeValue()) == 0 {
-			// Value is deleted.
-			iter.NextKey()
-			continue
-		}
-
-		keyScratch = append(keyScratch[:0], iter.UnsafeKey().Key...)
-		valueScratch = append(valueScratch[:0], iter.UnsafeValue()...)
-		key := engine.MVCCKey{Key: keyScratch, Timestamp: iter.UnsafeKey().Timestamp}
-		value := roachpb.Value{RawBytes: valueScratch}
-		iter.NextKey()
-
-		key.Key, ok, err = kr.RewriteKey(key.Key)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			// If the key rewriter didn't match this key, it's not data for the
-			// table(s) we're interested in.
-			if log.V(3) {
-				log.Infof(ctx, "skipping %s %s", key.Key, value.PrettyPrint())
+			kv := engine.MVCCKeyValue{
+				Key: engine.MVCCKey{
+					Key:       append([]byte(nil), []byte(k.Key)...),
+					Timestamp: k.Timestamp,
+				},
+				Value: append([]byte(nil), iter.UnsafeValue()...),
 			}
-			continue
+			kvs = append(kvs, kv)
+			if len(kvs) == cap(kvs) {
+				select {
+				case <-done:
+					return gCtx.Err()
+				case mvccCh <- kvs:
+					kvs = make([]engine.MVCCKeyValue, 0, cap(kvs))
+				}
+			}
 		}
-
-		// Rewriting the key means the checksum needs to be updated.
-		value.ClearChecksum()
-		value.InitChecksum(key.Key)
-
-		if log.V(3) {
-			log.Infof(ctx, "Put %s -> %s", key.Key, value.PrettyPrint())
+		if len(kvs) > 0 {
+			select {
+			case <-done:
+				return gCtx.Err()
+			case mvccCh <- kvs:
+			}
 		}
-
-		if err := rows.count(key.Key); err != nil {
-			return nil, errors.Wrapf(err, "decoding %s", key.Key)
+		return nil
+	})
+	g.Go(func() error {
+		var ok bool
+		var err error
+		defer close(rewrittenCh)
+		rewrittenKVs := make([]engine.MVCCKeyValue, 0, 1000)
+		for kvs := range mvccCh {
+			for _, kv := range kvs {
+				kv.Key.Key, ok, err = kr.RewriteKey(kv.Key.Key)
+				if err != nil {
+					return err
+				}
+				if !ok {
+					// If the key rewriter didn't match this key, it's not data for the
+					// table(s) we're interested in.
+					if log.V(3) {
+						log.Infof(ctx, "skipping %s %s", kv.Key.Key, roachpb.Value{RawBytes: kv.Value}.PrettyPrint())
+					}
+					continue
+				}
+				rewrittenKVs = append(rewrittenKVs, kv)
+				if len(rewrittenKVs) == cap(rewrittenKVs) {
+					select {
+					case <-done:
+						return gCtx.Err()
+					case rewrittenCh <- rewrittenKVs:
+						rewrittenKVs = make([]engine.MVCCKeyValue, 0, cap(rewrittenKVs))
+					}
+				}
+			}
 		}
-
-		if err := batcher.Add(key, value.RawBytes); err != nil {
-			return nil, errors.Wrapf(err, "adding to batch: %s -> %s", key, value.PrettyPrint())
+		if len(rewrittenKVs) > 0 {
+			select {
+			case <-done:
+				return gCtx.Err()
+			case rewrittenCh <- rewrittenKVs:
+			}
 		}
+		return nil
+	})
+	g.Go(func() error {
+		var key engine.MVCCKey
+		var value roachpb.Value
+		for kvs := range rewrittenCh {
+			for _, kv := range kvs {
+				key = kv.Key
+				value = roachpb.Value{RawBytes: kv.Value}
 
-		if size := batcher.Size(); size > maxImportBatchSize(cArgs.EvalCtx.ClusterSettings()) {
-			finishBatcher := batcher
-			batcher = nil
-			log.Eventf(gCtx, "triggering finish of batch of size %s", humanizeutil.IBytes(size))
+				// Rewriting the key means the checksum needs to be updated.
+				value.ClearChecksum()
+				value.InitChecksum(key.Key)
+
+				if log.V(3) {
+					log.Infof(ctx, "Put %s -> %s", key.Key, value.PrettyPrint())
+				}
+
+				if err := rows.count(key.Key); err != nil {
+					return errors.Wrapf(err, "decoding %s", key.Key)
+				}
+
+				if err := batcher.Add(key, value.RawBytes); err != nil {
+					return errors.Wrapf(err, "adding to batch: %s -> %s", key, value.PrettyPrint())
+				}
+
+				if size := batcher.Size(); size > maxImportBatchSize(cArgs.EvalCtx.ClusterSettings()) {
+					finishBatcher := batcher
+					batcher = nil
+					log.Eventf(gCtx, "triggering finish of batch of size %s", humanizeutil.IBytes(size))
+					g.Go(func() error {
+						defer log.Event(ctx, "finished batch")
+						defer finishBatcher.Close()
+						return errors.Wrapf(finishBatcher.Finish(gCtx, db), "import [%s, %s)", startKeyMVCC.Key, endKeyMVCC.Key)
+					})
+					if err := makeBatcher(); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		// Flush out the last batch.
+		if batcher.Size() > 0 {
 			g.Go(func() error {
 				defer log.Event(ctx, "finished batch")
-				defer finishBatcher.Close()
-				return errors.Wrapf(finishBatcher.Finish(gCtx, db), "import [%s, %s)", startKeyMVCC.Key, endKeyMVCC.Key)
+				defer batcher.Close()
+				return batcher.Finish(gCtx, db)
 			})
-			if err := makeBatcher(); err != nil {
-				return nil, err
-			}
 		}
-	}
-	// Flush out the last batch.
-	if batcher.Size() > 0 {
-		g.Go(func() error {
-			defer log.Event(ctx, "finished batch")
-			defer batcher.Close()
-			return batcher.Finish(gCtx, db)
-		})
-	}
-	log.Event(ctx, "waiting for batchers to finish")
+		return nil
+	})
 
+	log.Event(ctx, "waiting for batchers to finish")
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
